@@ -6,7 +6,7 @@
   <meta name="robots" content="{% firstof article.seo.robots 'index,follow' %}">
 
   <title>{% firstof article.seo.title article.title %} | Cultnova</title>
-  <meta name="description" content="{% firstof article.seo.description 'РЎС‚Р°С‚СЊСЏ РєРѕРјРїР°РЅРёРё Cultnova.' %}">
+  <meta name="description" content="{% firstof article.seo.description 'Статья компании Cultnova.' %}">
   {% if article.seo.keywords %}
   <meta name="keywords" content="{{ article.seo.keywords }}">
   {% endif %}
@@ -17,7 +17,7 @@
   <meta property="og:type" content="article">
   <meta property="og:url" content="{{ article.url }}">
   <meta property="og:title" content="{% firstof article.seo.og_title article.seo.title article.title %}">
-  <meta property="og:description" content="{% firstof article.seo.og_description article.seo.description 'РЎС‚Р°С‚СЊСЏ РєРѕРјРїР°РЅРёРё Cultnova.' %}">
+  <meta property="og:description" content="{% firstof article.seo.og_description article.seo.description 'Статья компании Cultnova.' %}">
   {% if article.seo.og_image %}
   <meta property="og:image" content="{{ article.seo.og_image }}">
   {% if article.seo.og_image_alt %}
@@ -84,7 +84,7 @@
     <ul class="breadcrumb-list">
       <li class="breadcrumb-item" itemprop="itemListElement" itemscope itemtype="https://schema.org/ListItem">
         <a href="/" itemprop="item">
-          <span itemprop="name" style="color: #757575;">Р“Р»Р°РІРЅР°СЏ</span>
+          <span itemprop="name" style="color: #757575;">Главная</span>
         </a>
         <meta itemprop="position" content="1">
       </li>
@@ -95,7 +95,7 @@
       </span>
       <li class="breadcrumb-item" itemprop="itemListElement" itemscope itemtype="https://schema.org/ListItem">
         <a href="/blog/" itemprop="item">
-          <span itemprop="name" style="color: #757575;">Р‘Р»РѕРі</span>
+          <span itemprop="name" style="color: #757575;">Блог</span>
         </a>
         <meta itemprop="position" content="2">
       </li>
@@ -137,7 +137,7 @@
               <a
                 href="{{ share.url }}"
                 class="article__social article__social--{{ share.platform|default:'other' }}"
-                aria-label="{{ share.aria_label|default:'РџРѕРґРµР»РёС‚СЊСЃСЏ' }}"
+                aria-label="{{ share.aria_label|default:'Поделиться' }}"
                 target="_blank"
                 rel="noopener noreferrer"
               >
@@ -204,7 +204,7 @@
 
   {% include "partials/popup.html" %}
 
-  <button class="scroll-to-top" id="scrollToTop" aria-label="РќР°РІРµСЂС…">
+  <button class="scroll-to-top" id="scrollToTop" aria-label="Наверх">
     <svg width="80" height="80" viewBox="0 0 80 80" fill="none" xmlns="http://www.w3.org/2000/svg">
       <g filter="url(#filter0_d_276_3781)">
         <path d="M8 38C8 20.3269 22.3269 6 40 6C57.6731 6 72 20.3269 72 38C72 55.6731 57.6731 70 40 70C22.3269 70 8 55.6731 8 38Z" fill="white" shape-rendering="crispEdges"/>
