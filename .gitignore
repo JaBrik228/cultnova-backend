@@ -1,0 +1,80 @@
+# Byte-compiled / optimized / DLL files
+__pycache__/
+*.py[cod]
+*$py.class
+
+consts.py
+project_scripts
+
+# telegram sessions
+*.session
+
+# Virtual environment
+venv/
+env/
+*.venv
+
+# Flask & gunicorn specific
+instance/
+*.log
+*.pid
+*.sock
+*.env
+*.flaskenv
+.env.deploy
+
+# Pip dependency cache
+pip-log.txt
+pip-delete-this-directory.txt
+
+# Distribution / packaging
+build/
+dist/
+*.egg-info/
+.eggs/
+
+# IDE / Editor files
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Pytest / Coverage
+.coverage
+htmlcov/
+.tox/
+.nox/
+
+# Database
+*.sqlite3
+*.db
+
+
+# Docker & CI/CD
+docker-compose.override.yml
+.dockerignore
+
+# Jupyter Notebook
+.ipynb_checkpoints
+
+# Misc
+.DS_Store
+Thumbs.db
+
+
+# Local artifacts / backups
+
+server_backups/
+.tmp_old_release/
+.tmp_old_static/
+.tmp_pre_release_article/
+tmp_release_hotfix/
+local_generated_pages/
+.venv_local_prodtest/
+.venv_local_prodtest2/
+*.tar.gz
+runserver_prod_like.err.log
+runserver_prod_like.out.log
+bg_wmic_test.txt
+db.sqlite3
+.env

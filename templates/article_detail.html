@@ -1,0 +1,242 @@
+﻿<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="robots" content="{% firstof article.seo.robots 'index,follow' %}">
+
+  <title>{% firstof article.seo.title article.title %} | Cultnova</title>
+  <meta name="description" content="{% firstof article.seo.description 'РЎС‚Р°С‚СЊСЏ РєРѕРјРїР°РЅРёРё Cultnova.' %}">
+  {% if article.seo.keywords %}
+  <meta name="keywords" content="{{ article.seo.keywords }}">
+  {% endif %}
+
+  <link rel="icon" href="/site-icons/favicon.svg" type="image/svg+xml">
+  <link rel="canonical" href="{% firstof article.seo.canonical article.url %}">
+
+  <meta property="og:type" content="article">
+  <meta property="og:url" content="{{ article.url }}">
+  <meta property="og:title" content="{% firstof article.seo.og_title article.seo.title article.title %}">
+  <meta property="og:description" content="{% firstof article.seo.og_description article.seo.description 'РЎС‚Р°С‚СЊСЏ РєРѕРјРїР°РЅРёРё Cultnova.' %}">
+  {% if article.seo.og_image %}
+  <meta property="og:image" content="{{ article.seo.og_image }}">
+  {% if article.seo.og_image_alt %}
+  <meta property="og:image:alt" content="{{ article.seo.og_image_alt }}">
+  {% endif %}
+  {% endif %}
+
+  <meta name="twitter:card" content="{% firstof article.seo.twitter_card 'summary' %}">
+  <meta name="twitter:title" content="{% firstof article.seo.twitter_title article.seo.og_title article.seo.title article.title %}">
+  <meta name="twitter:description" content="{% firstof article.seo.twitter_description article.seo.og_description article.seo.description article.title %}">
+  {% if article.seo.twitter_image %}
+  <meta name="twitter:image" content="{{ article.seo.twitter_image }}">
+  {% if article.seo.twitter_image_alt %}
+  <meta name="twitter:image:alt" content="{{ article.seo.twitter_image_alt }}">
+  {% endif %}
+  {% endif %}
+
+  {% if article_json_ld %}
+  <script type="application/ld+json">{{ article_json_ld|safe }}</script>
+  {% endif %}
+
+  <script type="text/javascript">
+    (function (m, e, t, r, i, k, a) {
+      m[i] = m[i] || function () { (m[i].a = m[i].a || []).push(arguments); };
+      m[i].l = 1 * new Date();
+      for (var j = 0; j < document.scripts.length; j++) {
+        if (document.scripts[j].src === r) { return; }
+      }
+      k = e.createElement(t), a = e.getElementsByTagName(t)[0], k.async = 1, k.src = r, a.parentNode.insertBefore(k, a);
+    })(window, document, "script", "https://mc.yandex.ru/metrika/tag.js", "ym");
+
+    ym(105343751, "init", {
+      clickmap: true,
+      trackLinks: true,
+      accurateTrackBounce: true
+    });
+  </script>
+  <noscript><div><img src="https://mc.yandex.ru/watch/105343751" style="position:absolute; left:-9999px;" alt="yandex" /></div></noscript>
+
+  {% if article.has_video %}
+  <link href="https://vjs.zencdn.net/8.23.4/video-js.css" rel="stylesheet" />
+  {% endif %}
+
+  <link rel="stylesheet" href="/css/general.css" />
+  <link rel="stylesheet" href="/css/loader.css" />
+  <link
+    rel="stylesheet"
+    href="/competence/css/style.css"
+    media="print"
+    onload="this.media='all'"
+  />
+  <link rel="stylesheet" href="/css/blog.css">
+  <link rel="stylesheet" href="/css/article.css?v=2026-02-19-2">
+</head>
+<body>
+  <div class="loader-wrap">
+    <span class="loader"></span>
+  </div>
+
+  {% include "partials/header.html" %}
+  {% include "partials/mobile_menu.html" %}
+
+  <nav class="breadcrumbs" itemscope itemtype="https://schema.org/BreadcrumbList">
+    <ul class="breadcrumb-list">
+      <li class="breadcrumb-item" itemprop="itemListElement" itemscope itemtype="https://schema.org/ListItem">
+        <a href="/" itemprop="item">
+          <span itemprop="name" style="color: #757575;">Р“Р»Р°РІРЅР°СЏ</span>
+        </a>
+        <meta itemprop="position" content="1">
+      </li>
+      <span>
+        <svg width="5" height="8" viewBox="0 0 5 8" fill="none" xmlns="http://www.w3.org/2000/svg">
+          <path d="M3.06667 4L0 0.933333L0.933333 0L4.93333 4L0.933333 8L0 7.06667L3.06667 4Z" fill="#757575"/>
+        </svg>
+      </span>
+      <li class="breadcrumb-item" itemprop="itemListElement" itemscope itemtype="https://schema.org/ListItem">
+        <a href="/blog/" itemprop="item">
+          <span itemprop="name" style="color: #757575;">Р‘Р»РѕРі</span>
+        </a>
+        <meta itemprop="position" content="2">
+      </li>
+      <svg width="5" height="8" viewBox="0 0 5 8" fill="none" xmlns="http://www.w3.org/2000/svg">
+        <path d="M3.06667 4L0 0.933333L0.933333 0L4.93333 4L0.933333 8L0 7.06667L3.06667 4Z" fill="#757575"/>
+      </svg>
+      <li class="breadcrumb-item" itemprop="itemListElement" itemscope itemtype="https://schema.org/ListItem">
+        <a href="{{ article.url|default:'/blog/' }}" itemprop="item">
+          <span itemprop="name">{{ article.title }}</span>
+        </a>
+        <meta itemprop="position" content="3">
+      </li>
+    </ul>
+  </nav>
+
+  <br><br>
+
+  <article class="article">
+    <div class="container">
+      <time class="article__date" datetime="{{ article.published_at_iso }}">
+        {{ article.published_at_display }}
+      </time>
+
+      <h1 class="title">{{ article.title }}</h1>
+
+      <div class="article__content{% if not article.media %} article__content--no-media{% endif %}">
+        <div class="article__text">
+          {% if article.subtitle %}
+          <h3 class="article__subtitle">{{ article.subtitle }}</h3>
+          {% endif %}
+
+          {# Backend must sanitize this HTML before rendering. #}
+          {{ article.body_html|safe }}
+
+          {% if article.share_links %}
+          <div class="article__socials">
+            {% for share in article.share_links %}
+              {% if share.url %}
+              <a
+                href="{{ share.url }}"
+                class="article__social article__social--{{ share.platform|default:'other' }}"
+                aria-label="{{ share.aria_label|default:'РџРѕРґРµР»РёС‚СЊСЃСЏ' }}"
+                target="_blank"
+                rel="noopener noreferrer"
+              >
+                {% if share.platform == 'whatsapp' %}
+                <svg width="17" height="17" viewBox="0 0 17 17" fill="none" xmlns="http://www.w3.org/2000/svg">
+                  <path fill-rule="evenodd" clip-rule="evenodd" d="M0 16.6667C0.451422 15.2056 0.974648 13.8166 1.453 12.3826C-1.7179 6.82316 2.20625 0.564543 7.52134 0.0446548C12.5396 -0.446269 16.6542 3.16715 16.6666 8.09859C16.6797 13.302 11.6455 17.6714 5.98286 15.8954C5.55572 15.7615 5.02719 15.325 4.52987 15.2957C3.83483 15.2546 2.92394 15.7549 2.22215 15.9811C1.45291 16.2292 0.784027 16.4778 0 16.6667ZM4.70083 13.7535C9.27361 16.5356 14.7491 13.4151 15.2136 8.86972C15.634 4.75492 12.3565 1.09368 7.94866 1.41554C2.91642 1.7829 -0.106337 7.80458 2.99139 12.2112C2.71717 12.9646 2.46055 13.7355 2.22215 14.5246C3.06174 14.2809 3.83568 13.9715 4.70083 13.7535Z" fill="white"/>
+                  <path fill-rule="evenodd" clip-rule="evenodd" d="M6.49575 4.243C6.97675 5.25159 7.72077 6.74338 6.49575 7.41323C7.11787 8.73167 8.14646 9.64265 9.48714 10.2407C9.933 9.94506 10.2258 9.49595 10.5983 9.12688C11.3765 9.43203 12.104 9.78799 12.735 10.2407C12.7998 11.7147 11.5608 12.2597 10.5128 12.2113C8.30186 12.1094 5.26312 9.30923 4.52995 7.24185C4.09486 6.01518 4.59526 3.66896 6.49575 4.243Z" fill="white"/>
+                </svg>
+                {% elif share.platform == 'telegram' %}
+                <svg width="17" height="15" viewBox="0 0 17 15" fill="none" xmlns="http://www.w3.org/2000/svg">
+                  <path d="M15.2458 0.125067C15.2458 0.125067 16.7876 -0.488147 16.6591 1.00109C16.6162 1.61431 16.2308 3.76056 15.931 6.08203L14.9031 12.9588C14.9031 12.9588 14.8175 13.9662 14.0466 14.1414C13.2757 14.3166 12.1194 13.5282 11.9052 13.353C11.7339 13.2216 8.69318 11.2506 7.62246 10.2869C7.32266 10.0241 6.98004 9.4985 7.66528 8.88529L12.1622 4.5052C12.6761 3.97958 13.19 2.75315 11.0487 4.24239L5.05282 8.4035C5.05282 8.4035 4.36758 8.84149 3.08278 8.44729L0.298977 7.57127C0.298977 7.57127 -0.728885 6.91426 1.02704 6.25721C5.30981 4.19855 10.5776 2.0961 15.2458 0.125067Z" fill="white"/>
+                </svg>
+                {% else %}
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                  <path d="M14 5H19V10" stroke="white" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                  <path d="M10 14L19 5" stroke="white" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                  <path d="M19 14V19H5V5H10" stroke="white" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                </svg>
+                {% endif %}
+              </a>
+              {% endif %}
+            {% endfor %}
+          </div>
+          {% endif %}
+        </div>
+
+        {% if article.media %}
+        <div class="article__media">
+          {% for item in article.media %}
+            {% if item.kind == 'video' and item.sources %}
+              <div class="article__media-item article__media-item--video">
+                <video
+                  id="article-video-{{ forloop.counter }}"
+                  class="video-js"
+                  controls
+                  preload="metadata"
+                  width="100%"
+                  height="100%"
+                  {% if item.poster %}poster="{{ item.poster }}"{% endif %}
+                  data-setup='{}'
+                >
+                  {% for source in item.sources %}
+                  <source src="{{ source.url }}" type="{{ source.type }}" />
+                  {% endfor %}
+                </video>
+              </div>
+              {% if item.caption %}<p class="article__media-caption">{{ item.caption }}</p>{% endif %}
+            {% elif item.kind == 'image' %}
+              <div class="article__media-item">
+                <img src="{{ item.url }}" alt="{{ item.alt|default:article.title }}" />
+              </div>
+              {% if item.caption %}<p class="article__media-caption">{{ item.caption }}</p>{% endif %}
+            {% endif %}
+          {% endfor %}
+        </div>
+        {% endif %}
+      </div>
+    </div>
+  </article>
+
+  <div class="background-black">
+    {% include "partials/footer.html" %}
+  </div>
+
+  {% include "partials/popup.html" %}
+
+  <button class="scroll-to-top" id="scrollToTop" aria-label="РќР°РІРµСЂС…">
+    <svg width="80" height="80" viewBox="0 0 80 80" fill="none" xmlns="http://www.w3.org/2000/svg">
+      <g filter="url(#filter0_d_276_3781)">
+        <path d="M8 38C8 20.3269 22.3269 6 40 6C57.6731 6 72 20.3269 72 38C72 55.6731 57.6731 70 40 70C22.3269 70 8 55.6731 8 38Z" fill="white" shape-rendering="crispEdges"/>
+        <mask id="mask0_276_3781" style="mask-type:alpha" maskUnits="userSpaceOnUse" x="24" y="22" width="32" height="32">
+          <rect x="24" y="22" width="32" height="32" fill="#D9D9D9"/>
+        </mask>
+        <g mask="url(#mask0_276_3781)">
+          <path d="M38.6666 48.6673V32.434L31.1999 39.9007L29.3333 38.0007L39.9999 27.334L50.6666 38.0007L48.7999 39.9007L41.3333 32.434V48.6673H38.6666Z" fill="#475EEA"/>
+        </g>
+      </g>
+      <defs>
+        <filter id="filter0_d_276_3781" x="0" y="0" width="80" height="80" filterUnits="userSpaceOnUse" color-interpolation-filters="sRGB">
+          <feFlood flood-opacity="0" result="BackgroundImageFix"/>
+          <feColorMatrix in="SourceAlpha" type="matrix" values="0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 127 0" result="hardAlpha"/>
+          <feOffset dy="2"/>
+          <feGaussianBlur stdDeviation="4"/>
+          <feComposite in2="hardAlpha" operator="out"/>
+          <feColorMatrix type="matrix" values="0 0 0 0 0.133333 0 0 0 0 0.133333 0 0 0 0 0.133333 0 0 0 1 0"/>
+          <feBlend mode="normal" in2="BackgroundImageFix" result="effect1_dropShadow_276_3781"/>
+          <feBlend mode="normal" in="SourceGraphic" in2="effect1_dropShadow_276_3781" result="shape"/>
+        </filter>
+      </defs>
+    </svg>
+  </button>
+
+  <script src="/js/script.js"></script>
+  <script src="/js/popup.js"></script>
+  <script src="/js/form-submit.js"></script>
+  <script src="/js/cookie-consent.js" defer></script>
+
+  {% if article.has_video %}
+  <script src="https://vjs.zencdn.net/8.23.4/video.min.js"></script>
+  {% endif %}
+</body>
+</html>
