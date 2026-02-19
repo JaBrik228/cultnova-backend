@@ -1,0 +1,54 @@
+<div class="callback-popup" id="callbackPopup">
+  <div class="callback-popup__content">
+    <button class="callback-popup__close" id="callbackPopupClose" aria-label="Закрыть" type="button">
+      <svg width="24" height="24" viewBox="0 0 24 24" fill="none">
+        <path
+          d="M18 6L6 18M6 6L18 18"
+          stroke="#2B2A29"
+          stroke-width="2"
+          stroke-linecap="round"
+        />
+      </svg>
+    </button>
+
+    <div class="callback-popup__image">
+      <img src="/site-icons/popup-laptop.webp" alt="" />
+    </div>
+
+    <h2 class="callback-popup__title">Заказать обратный звонок</h2>
+
+    <p class="callback-popup__desc">
+      Оставьте заявку и мы свяжемся с вами в рабочее время <br />
+      с 08:00 до 20:00
+    </p>
+
+    <form class="callback-popup__form">
+      <div class="callback-popup__field">
+        <input
+          type="text"
+          class="callback-popup__input"
+          placeholder="Имя"
+          name="name"
+        />
+      </div>
+
+      <div class="callback-popup__field">
+        <input
+          type="tel"
+          class="callback-popup__input"
+          placeholder="Телефон"
+          name="phone"
+        />
+      </div>
+
+      <button class="callback-popup__submit" type="button">отправить заявку</button>
+
+      <div class="callback-popup__policy">
+        Нажимая кнопку "отправить заявку", вы соглашаетесь с
+        <a href="/personal-data/">Обработкой персональных данных</a>
+        и
+        <a href="/privacy-policy/">Политикой Конфиденциальности</a>
+      </div>
+    </form>
+  </div>
+</div>

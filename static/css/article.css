@@ -266,3 +266,143 @@
   aspect-ratio: 16 / 9;
   object-fit: cover;
 }
+
+.callback-popup {
+  position: fixed;
+  top: 50px;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  background: rgba(0, 0, 0, 0.6);
+  opacity: 0;
+  visibility: hidden;
+  transition: 0.3s ease;
+  z-index: 3000;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  padding: 1rem;
+}
+
+.callback-popup.popup--active,
+.callback-popup.callback-popup--active {
+  opacity: 1;
+  visibility: visible;
+}
+
+.callback-popup__content {
+  position: relative;
+  width: 100%;
+  max-width: 600px;
+  max-height: 85vh;
+  overflow-y: auto;
+  padding: 60px 40px 40px;
+  background: #ffffff;
+  border-radius: 16px;
+  background-image: url("/site-icons/modal-bg.svg");
+  background-size: cover;
+  background-position: top;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+}
+
+.callback-popup__close {
+  position: absolute;
+  top: 20px;
+  right: 20px;
+  border: 0;
+  background: transparent;
+  cursor: pointer;
+}
+
+.callback-popup__image {
+  margin-bottom: 20px;
+}
+
+.callback-popup__image img {
+  width: 160px;
+}
+
+.callback-popup__title {
+  font-size: 2rem;
+  font-weight: 700;
+  color: var(--primary-color);
+  text-align: center;
+  margin-bottom: 20px;
+}
+
+.callback-popup__desc {
+  font-size: 1rem;
+  color: var(--text-gray);
+  text-align: center;
+  margin-bottom: 40px;
+}
+
+.callback-popup__form {
+  width: 100%;
+}
+
+.callback-popup__field {
+  margin-bottom: 30px;
+}
+
+.callback-popup__input {
+  width: 100%;
+  padding: 12px 0;
+  border: 0;
+  border-bottom: 1px solid #cccccc;
+  font-size: 1rem;
+  background: transparent;
+  color: var(--text-gray);
+}
+
+.callback-popup__input:focus {
+  border-bottom: 2px solid var(--primary-color);
+  outline: none;
+}
+
+.callback-popup__submit {
+  width: 100%;
+  padding: 18px;
+  border-radius: 40px;
+  border: 0;
+  font-size: 1.2rem;
+  font-weight: 600;
+  color: #ffffff;
+  background: var(--primary-color);
+  cursor: pointer;
+  transition: opacity 0.2s ease;
+}
+
+.callback-popup__submit:hover {
+  opacity: 0.9;
+}
+
+.callback-popup__policy {
+  margin-top: 20px;
+  font-size: 0.85rem;
+  color: var(--text-gray);
+  text-align: center;
+}
+
+.callback-popup__policy a {
+  color: var(--primary-color);
+  text-decoration: none;
+}
+
+@media (max-width: 768px) {
+  .callback-popup__content {
+    padding: 50px 20px 24px;
+    border-radius: 12px;
+  }
+
+  .callback-popup__title {
+    font-size: 1.5rem;
+  }
+
+  .callback-popup__desc {
+    margin-bottom: 24px;
+    font-size: 0.95rem;
+  }
+}
