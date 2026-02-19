@@ -67,8 +67,34 @@ def _build_article_body_and_media(article):
     return mark_safe("".join(html_parts)), media_list, has_video
 
 
+def _build_related_articles(article, limit=6):
+    related_qs = (
+        article.__class__.objects.filter(is_published=True)
+        .exclude(slug=article.slug)
+        .order_by("-created_at")[:limit]
+    )
+
+    related_articles = []
+    for related in related_qs:
+        title = _normalize_text(related.title)
+        excerpt = _normalize_text(related.excerpt) or _normalize_text(related.seo_description) or title
+        related_articles.append(
+            {
+                "slug": related.slug,
+                "title": title,
+                "url": build_public_article_path(related.slug),
+                "preview_image": related.preview_image or "",
+                "preview_image_alt": _normalize_text(related.preview_image_alt) or title,
+                "excerpt": excerpt,
+            }
+        )
+
+    return related_articles
+
+
 def build_article_render_context(article):
     body_html, media_list, has_video = _build_article_body_and_media(article)
+    related_articles = _build_related_articles(article)
 
     article_path = build_public_article_path(article.slug)
     article_url = build_public_article_url(article.slug)
@@ -134,5 +160,6 @@ def build_article_render_context(article):
 
     return {
         "article": article,
+        "related_articles": related_articles,
         "article_json_ld": mark_safe(json.dumps(article_json_ld, ensure_ascii=False)),
     }

@@ -588,7 +588,7 @@ print(remote_path)
         Write-Step "Migrations are skipped (default)."
     }
 
-    $deployCmd = 'set -e; pkg="{0}"; app_root="{1}"; tmp_dir="{2}"; venv_py="{3}"; test -f "$pkg"; tar -xzf "$pkg" -C "$app_root"; touch "$tmp_dir/restart.txt"; {4} "$venv_py" "$app_root/manage.py" rebuild_articles_html --delete-unpublished; echo DEPLOY_OK=1' -f $remotePackagePath, $remoteAppRoot, $script:RemoteTmpDir, $remoteVenvPy, $migratePart
+    $deployCmd = 'set -e; pkg="{0}"; app_root="{1}"; tmp_dir="{2}"; venv_py="{3}"; site_root="{4}"; test -f "$pkg"; tar -xzf "$pkg" -C "$app_root"; touch "$tmp_dir/restart.txt"; {5} "$venv_py" "$app_root/manage.py" rebuild_articles_html --delete-unpublished; mkdir -p "$site_root/css" "$site_root/js" "$site_root/site-icons"; cp "$app_root/static/css/article.css" "$site_root/css/article.css"; cp "$app_root/static/css/articles-slider.css" "$site_root/css/articles-slider.css"; cp "$app_root/static/js/article-slider.js" "$site_root/js/article-slider.js"; cp "$app_root/static/site-icons/play_circle.svg" "$site_root/site-icons/play_circle.svg"; echo DEPLOY_OK=1' -f $remotePackagePath, $remoteAppRoot, $script:RemoteTmpDir, $remoteVenvPy, $remoteSiteRoot, $migratePart
     Invoke-Remote -Command $deployCmd -Description "Deploying package and rebuilding article pages"
 
     # F. Smoke-check
@@ -598,9 +598,13 @@ print(remote_path)
     else {
         $apiArticlesUrl = "{0}/api/articles/" -f $remoteDomainCms
         $apiProjectsUrl = "{0}/api/projects/categories" -f $remoteDomainCms
+        $sliderCssUrl = "{0}/css/articles-slider.css" -f $remoteDomainSite
+        $sliderJsUrl = "{0}/js/article-slider.js" -f $remoteDomainSite
 
         $articlesResponse = Ensure-Http200 -Url $apiArticlesUrl -Description "Smoke: API articles"
         $corsResponse = Ensure-Http200 -Url $apiProjectsUrl -Headers @{ Origin = "https://cultnova.ru" } -Description "Smoke: API CORS"
+        Ensure-Http200 -Url $sliderCssUrl -Description "Smoke: public slider CSS" | Out-Null
+        Ensure-Http200 -Url $sliderJsUrl -Description "Smoke: public slider JS" | Out-Null
         $acao = $corsResponse.Headers["Access-Control-Allow-Origin"]
         if ($acao -ne "https://cultnova.ru") {
             Fail ("CORS check failed. Expected Access-Control-Allow-Origin=https://cultnova.ru, got: {0}" -f $acao)

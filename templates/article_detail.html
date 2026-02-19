@@ -70,6 +70,7 @@
     onload="this.media='all'"
   />
   <link rel="stylesheet" href="/css/blog.css">
+  <link rel="stylesheet" href="/css/articles-slider.css?v=2026-02-19-1">
   <link rel="stylesheet" href="/css/article.css?v=2026-02-19-2">
 </head>
 <body>
@@ -232,6 +233,53 @@
     </div>
   </article>
 
+  {% if related_articles %}
+  <section class="articles-slider">
+    <div class="container">
+      <div class="articles-slider__header">
+        <h2 class="articles-slider__title">Интересные статьи</h2>
+        <div class="articles-slider__nav">
+          <button class="articles-slider__arrow articles-slider__arrow--prev" type="button" aria-label="Предыдущий слайд">
+            <svg width="14" height="14" viewBox="0 0 14 14" fill="none" xmlns="http://www.w3.org/2000/svg">
+              <path d="M3.1875 7.5L7.85417 12.1667L6.66667 13.3333L0 6.66667L6.66667 0L7.85417 1.16667L3.1875 5.83333H13.3333V7.5H3.1875Z" fill="#212121"/>
+            </svg>
+          </button>
+          <button class="articles-slider__arrow articles-slider__arrow--next" type="button" aria-label="Следующий слайд">
+            <svg width="14" height="14" viewBox="0 0 14 14" fill="none" xmlns="http://www.w3.org/2000/svg">
+              <path d="M10.1458 7.5H0V5.83333H10.1458L5.47917 1.16667L6.66667 0L13.3333 6.66667L6.66667 13.3333L5.47917 12.1667L10.1458 7.5Z" fill="#212121"/>
+            </svg>
+          </button>
+        </div>
+      </div>
+
+      <div class="articles-slider__slider">
+        <div class="articles-slider__track">
+          {% for related in related_articles %}
+          <article class="articles-slider__card">
+            <a href="{{ related.url }}" class="articles-slider__card-link">
+              {% if related.preview_image %}
+              <div class="articles-slider__card-image">
+                <img
+                  src="{{ related.preview_image }}"
+                  alt="{{ related.preview_image_alt|default:related.title }}"
+                  loading="lazy"
+                  decoding="async"
+                />
+              </div>
+              {% endif %}
+              <h3 class="articles-slider__card-title">{{ related.title }}</h3>
+              {% if related.excerpt %}
+              <p class="articles-slider__card-text">{{ related.excerpt }}</p>
+              {% endif %}
+            </a>
+          </article>
+          {% endfor %}
+        </div>
+      </div>
+    </div>
+  </section>
+  {% endif %}
+
   <div class="background-black">
     {% include "partials/footer.html" %}
   </div>
@@ -268,6 +316,9 @@
   <script src="/js/popup.js"></script>
   <script src="/js/form-submit.js"></script>
   <script src="/js/cookie-consent.js" defer></script>
+  {% if related_articles %}
+  <script src="/js/article-slider.js" defer></script>
+  {% endif %}
 
   {% if article.has_video %}
   <script src="https://vjs.zencdn.net/8.23.4/video.min.js"></script>
