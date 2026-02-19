@@ -168,21 +168,55 @@
         <div class="article__media">
           {% for item in article.media %}
             {% if item.kind == 'video' and item.sources %}
-              <div class="article__media-item article__media-item--video">
-                <video
-                  id="article-video-{{ forloop.counter }}"
-                  class="video-js"
-                  controls
-                  preload="metadata"
-                  width="100%"
-                  height="100%"
-                  {% if item.poster %}poster="{{ item.poster }}"{% endif %}
-                  data-setup='{}'
-                >
-                  {% for source in item.sources %}
-                  <source src="{{ source.url }}" type="{{ source.type }}" />
-                  {% endfor %}
-                </video>
+              <div class="article__media-item article__media-item--video" data-video-state="idle">
+                <div class="article__video-placeholder">
+                  {% if item.poster %}
+                  <img
+                    class="article__video-poster"
+                    src="{{ item.poster }}"
+                    alt=""
+                    loading="lazy"
+                    decoding="async"
+                  />
+                  {% else %}
+                  <div class="article__video-poster article__video-poster--fallback"></div>
+                  {% endif %}
+                  <button
+                    type="button"
+                    class="article__play-btn"
+                    aria-label="Запустить видео"
+                  ></button>
+                </div>
+                <div class="article__video-player-wrap" aria-hidden="true">
+                  <video
+                    id="article-video-{{ forloop.counter }}"
+                    controls
+                    preload="none"
+                    width="100%"
+                    height="100%"
+                    {% if item.poster %}poster="{{ item.poster }}"{% endif %}
+                    data-lazy-video="1"
+                    data-video-loaded="0"
+                  >
+                    {% for source in item.sources %}
+                    <source data-src="{{ source.url }}" type="{{ source.type }}" />
+                    {% endfor %}
+                  </video>
+                </div>
+                <noscript>
+                  <video
+                    class="article__video-noscript"
+                    controls
+                    preload="metadata"
+                    width="100%"
+                    height="100%"
+                    {% if item.poster %}poster="{{ item.poster }}"{% endif %}
+                  >
+                    {% for source in item.sources %}
+                    <source src="{{ source.url }}" type="{{ source.type }}" />
+                    {% endfor %}
+                  </video>
+                </noscript>
               </div>
               {% if item.caption %}<p class="article__media-caption">{{ item.caption }}</p>{% endif %}
             {% elif item.kind == 'image' %}
@@ -237,6 +271,203 @@
 
   {% if article.has_video %}
   <script src="https://vjs.zencdn.net/8.23.4/video.min.js"></script>
+  <script>
+    (function () {
+      function isActivationKey(event) {
+        var key = event.key || event.code;
+        return key === "Enter" || key === " " || key === "Spacebar" || key === "Space";
+      }
+
+      function hydrateVideo(video) {
+        if (!video) {
+          return [];
+        }
+
+        var sources = video.querySelectorAll("source");
+        var sourceObjects = [];
+        for (var i = 0; i < sources.length; i++) {
+          var source = sources[i];
+          var src = source.getAttribute("src");
+          var dataSrc = source.getAttribute("data-src");
+          if (!src && dataSrc) {
+            source.setAttribute("src", dataSrc);
+            src = dataSrc;
+          }
+          if (src) {
+            sourceObjects.push({
+              src: src,
+              type: source.getAttribute("type") || "video/mp4"
+            });
+          }
+        }
+
+        if (sourceObjects.length > 0 && video.dataset.videoLoaded !== "1") {
+          video.dataset.videoLoaded = "1";
+          video.load();
+        }
+
+        return sourceObjects;
+      }
+
+      function initPlayer(video, sourceObjects) {
+        if (!window.videojs || typeof window.videojs !== "function") {
+          return null;
+        }
+
+        try {
+          var player = null;
+          if (video.id && typeof window.videojs.getPlayer === "function") {
+            player = window.videojs.getPlayer(video.id);
+          }
+          if (!player) {
+            player = window.videojs(video, {
+              controls: true,
+              preload: "none",
+              autoplay: false
+            });
+          }
+          if (player && typeof player.src === "function" && sourceObjects && sourceObjects.length > 0) {
+            player.src(sourceObjects);
+          }
+          return player;
+        } catch (e) {
+          return null;
+        }
+      }
+
+      function tryPlay(video) {
+        if (!video) {
+          return null;
+        }
+        try {
+          var promise = video.play();
+          if (promise && typeof promise.catch === "function") {
+            promise.catch(function () {});
+          }
+          return promise;
+        } catch (e) {}
+        return null;
+      }
+
+      function markStarted(wrapper) {
+        wrapper.dataset.videoState = "started";
+        wrapper.classList.remove("is-loading");
+        wrapper.classList.add("is-started");
+        wrapper.removeAttribute("tabindex");
+        wrapper.removeAttribute("role");
+        wrapper.removeAttribute("aria-label");
+
+        var playerWrap = wrapper.querySelector(".article__video-player-wrap");
+        if (playerWrap) {
+          playerWrap.setAttribute("aria-hidden", "false");
+        }
+      }
+
+      function markError(wrapper) {
+        wrapper.dataset.videoState = "error";
+        wrapper.classList.remove("is-loading");
+        wrapper.classList.remove("is-started");
+        wrapper.classList.add("is-error");
+      }
+
+      function activateVideo(wrapper, event) {
+        var state = wrapper.dataset.videoState || "idle";
+        if (state === "loading" || state === "started") {
+          return;
+        }
+
+        if (event) {
+          if (event.type === "keydown" && !isActivationKey(event)) {
+            return;
+          }
+          event.preventDefault();
+          event.stopPropagation();
+        }
+
+        var video = wrapper.querySelector("video[data-lazy-video='1']");
+        if (!video) {
+          markError(wrapper);
+          return;
+        }
+
+        wrapper.dataset.videoState = "loading";
+        wrapper.classList.remove("is-error");
+        wrapper.classList.add("is-loading");
+
+        var playerWrap = wrapper.querySelector(".article__video-player-wrap");
+        if (playerWrap) {
+          playerWrap.setAttribute("aria-hidden", "false");
+        }
+
+        var sources = hydrateVideo(video);
+        if (!sources.length) {
+          markError(wrapper);
+          return;
+        }
+
+        video.classList.add("video-js");
+
+        var started = false;
+        var onStarted = function () {
+          if (started) {
+            return;
+          }
+          started = true;
+          markStarted(wrapper);
+        };
+        video.addEventListener("loadeddata", onStarted, { once: true });
+        video.addEventListener("playing", onStarted, { once: true });
+
+        var player = initPlayer(video, sources);
+        var playPromise = null;
+        if (player && typeof player.play === "function") {
+          try {
+            playPromise = player.play();
+          } catch (e) {
+            playPromise = null;
+          }
+        }
+
+        if (!playPromise) {
+          playPromise = tryPlay(video);
+        }
+
+        if (playPromise && typeof playPromise.catch === "function") {
+          playPromise.catch(function () {
+            if (!started) {
+              wrapper.classList.remove("is-loading");
+            }
+          });
+        }
+      }
+
+      function bindLazyVideo(wrapper) {
+        var activate = function (event) {
+          activateVideo(wrapper, event);
+        };
+
+        var playButton = wrapper.querySelector(".article__play-btn");
+        if (playButton) {
+          playButton.addEventListener("click", activate);
+          playButton.addEventListener("touchstart", activate, { passive: false });
+          playButton.addEventListener("keydown", activate);
+          return;
+        }
+
+        wrapper.setAttribute("tabindex", "0");
+        wrapper.setAttribute("role", "button");
+        wrapper.setAttribute("aria-label", "Запустить видео");
+        wrapper.addEventListener("click", activate);
+        wrapper.addEventListener("touchstart", activate, { passive: false });
+        wrapper.addEventListener("keydown", activate);
+      }
+
+      var wrappers = document.querySelectorAll(".article__media-item--video");
+      for (var i = 0; i < wrappers.length; i++) {
+        bindLazyVideo(wrappers[i]);
+      }
+    })();
+  </script>
   {% endif %}
 </body>
 </html>

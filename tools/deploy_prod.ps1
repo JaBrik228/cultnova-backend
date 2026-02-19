@@ -126,6 +126,271 @@ function Invoke-Remote {
     return Invoke-ProcessChecked -Exe "python" -ArgumentList @($script:SshRunPath, $Command) -Description $Description
 }
 
+function ConvertTo-HeadersHashtable {
+    param([string[]]$HeaderLines)
+
+    $headers = @{}
+    foreach ($line in $HeaderLines) {
+        if ($line -match "^\s*([^:]+)\s*:\s*(.*)$") {
+            $name = $matches[1].Trim()
+            $value = $matches[2].Trim()
+            if ($headers.ContainsKey($name)) {
+                $headers[$name] = "{0}, {1}" -f $headers[$name], $value
+            }
+            else {
+                $headers[$name] = $value
+            }
+        }
+    }
+    return $headers
+}
+
+function Get-LastHttpHeaderBlock {
+    param([string]$HeadersText)
+
+    $lines = $HeadersText -split "`r?`n"
+    $blocks = @()
+    $current = @()
+
+    foreach ($lineRaw in $lines) {
+        $line = $lineRaw.TrimEnd("`r")
+        if ($line -match "^HTTP/\S+\s+\d{3}\b") {
+            if ($current.Count -gt 0) {
+                $blocks += ,$current
+            }
+            $current = @($line)
+            continue
+        }
+
+        if ($current.Count -gt 0) {
+            if ([string]::IsNullOrWhiteSpace($line)) {
+                $blocks += ,$current
+                $current = @()
+            }
+            else {
+                $current += $line
+            }
+        }
+    }
+
+    if ($current.Count -gt 0) {
+        $blocks += ,$current
+    }
+
+    if ($blocks.Count -eq 0) {
+        throw [System.Exception]::new("No HTTP header blocks were parsed from curl output.")
+    }
+
+    return $blocks[$blocks.Count - 1]
+}
+
+function Invoke-HttpViaCurl {
+    param(
+        [string]$Url,
+        [hashtable]$Headers = @{}
+    )
+
+    $curlCmd = Get-Command "curl.exe" -ErrorAction SilentlyContinue
+    if (-not $curlCmd) {
+        throw [System.Exception]::new("curl.exe is not available in PATH.")
+    }
+
+    $headersFile = [System.IO.Path]::GetTempFileName()
+    $bodyFile = [System.IO.Path]::GetTempFileName()
+
+    try {
+        $args = @(
+            "-sS",
+            "-L",
+            "--connect-timeout", "10",
+            "--max-time", "30",
+            "-D", $headersFile,
+            "-o", $bodyFile,
+            "-w", "%{http_code}"
+        )
+
+        foreach ($key in $Headers.Keys) {
+            $args += "-H"
+            $args += ("{0}: {1}" -f $key, [string]$Headers[$key])
+        }
+
+        $args += $Url
+
+        $rawOutput = & $curlCmd.Source @args 2>&1
+        $exitCode = $LASTEXITCODE
+        $outputText = ($rawOutput | Out-String).Trim()
+
+        if ($exitCode -ne 0) {
+            throw [System.Exception]::new(
+                ("curl.exe failed with exit code {0}: {1}" -f $exitCode, $outputText)
+            )
+        }
+
+        $headersText = ""
+        if (Test-Path -LiteralPath $headersFile) {
+            $headersText = Get-Content -LiteralPath $headersFile -Raw
+        }
+        if ([string]::IsNullOrWhiteSpace($headersText)) {
+            throw [System.Exception]::new("curl.exe response headers are empty.")
+        }
+
+        $finalBlock = Get-LastHttpHeaderBlock -HeadersText $headersText
+        $statusLine = [string]$finalBlock[0]
+        if (-not ($statusLine -match "^HTTP/\S+\s+(\d{3})\b")) {
+            throw [System.Exception]::new(("Unable to parse HTTP status from line: {0}" -f $statusLine))
+        }
+        $statusCode = [int]$matches[1]
+
+        $statusFromWriteOut = 0
+        if ($outputText -match "(\d{3})\s*$") {
+            $statusFromWriteOut = [int]$matches[1]
+        }
+        if ($statusFromWriteOut -ne 0 -and $statusFromWriteOut -ne $statusCode) {
+            throw [System.Exception]::new(
+                ("curl.exe status mismatch: headers={0}, write-out={1}" -f $statusCode, $statusFromWriteOut)
+            )
+        }
+
+        $body = ""
+        if (Test-Path -LiteralPath $bodyFile) {
+            $body = Get-Content -LiteralPath $bodyFile -Raw
+        }
+
+        $headersHash = ConvertTo-HeadersHashtable -HeaderLines $finalBlock
+        return [PSCustomObject]@{
+            StatusCode = $statusCode
+            Content = [string]$body
+            Headers = $headersHash
+            Transport = "curl"
+        }
+    }
+    finally {
+        if (Test-Path -LiteralPath $headersFile) {
+            Remove-Item -LiteralPath $headersFile -Force -ErrorAction SilentlyContinue
+        }
+        if (Test-Path -LiteralPath $bodyFile) {
+            Remove-Item -LiteralPath $bodyFile -Force -ErrorAction SilentlyContinue
+        }
+    }
+}
+
+function Invoke-HttpViaInvokeWebRequest {
+    param(
+        [string]$Url,
+        [hashtable]$Headers = @{}
+    )
+
+    try {
+        $response = Invoke-WebRequest -Uri $Url -Method GET -Headers $Headers -TimeoutSec 30 -UseBasicParsing
+        $headersHash = @{}
+        if ($response.Headers) {
+            foreach ($name in $response.Headers.Keys) {
+                $headersHash[$name] = [string]$response.Headers[$name]
+            }
+        }
+        return [PSCustomObject]@{
+            StatusCode = [int]$response.StatusCode
+            Content = [string]$response.Content
+            Headers = $headersHash
+            Transport = "Invoke-WebRequest"
+        }
+    }
+    catch {
+        $webResponse = $_.Exception.Response
+        if ($null -ne $webResponse) {
+            $statusCode = 0
+            try {
+                $statusCode = [int]$webResponse.StatusCode
+            }
+            catch {
+                $statusCode = 0
+            }
+
+            $headersHash = @{}
+            try {
+                if ($webResponse.Headers) {
+                    foreach ($name in $webResponse.Headers.AllKeys) {
+                        if (-not [string]::IsNullOrWhiteSpace([string]$name)) {
+                            $headersHash[$name] = [string]$webResponse.Headers[$name]
+                        }
+                    }
+                }
+            }
+            catch { }
+
+            $content = ""
+            try {
+                $stream = $webResponse.GetResponseStream()
+                if ($null -ne $stream) {
+                    $reader = New-Object System.IO.StreamReader($stream)
+                    try {
+                        $content = $reader.ReadToEnd()
+                    }
+                    finally {
+                        $reader.Close()
+                        $stream.Close()
+                    }
+                }
+            }
+            catch { }
+
+            return [PSCustomObject]@{
+                StatusCode = $statusCode
+                Content = [string]$content
+                Headers = $headersHash
+                Transport = "Invoke-WebRequest"
+            }
+        }
+
+        throw [System.Exception]::new(
+            ("Invoke-WebRequest failed for {0}: {1}" -f $Url, $_.Exception.Message)
+        )
+    }
+}
+
+function Invoke-HttpWithFallback {
+    param(
+        [string]$Url,
+        [hashtable]$Headers = @{}
+    )
+
+    $primaryTransport = "Invoke-WebRequest"
+    $fallbackTransport = $null
+    if (Get-Command "curl.exe" -ErrorAction SilentlyContinue) {
+        $primaryTransport = "curl"
+        $fallbackTransport = "Invoke-WebRequest"
+    }
+
+    $primaryError = $null
+    try {
+        if ($primaryTransport -eq "curl") {
+            return Invoke-HttpViaCurl -Url $Url -Headers $Headers
+        }
+        return Invoke-HttpViaInvokeWebRequest -Url $Url -Headers $Headers
+    }
+    catch {
+        $primaryError = $_.Exception.Message
+    }
+
+    if ([string]::IsNullOrWhiteSpace($fallbackTransport)) {
+        throw [System.Exception]::new(
+            ("HTTP request failed for {0}. Primary {1} error: {2}" -f $Url, $primaryTransport, $primaryError)
+        )
+    }
+
+    Write-Step ("Primary transport failed, fallback to {0}: {1}" -f $fallbackTransport, $primaryError)
+
+    try {
+        return Invoke-HttpViaInvokeWebRequest -Url $Url -Headers $Headers
+    }
+    catch {
+        $fallbackError = $_.Exception.Message
+        throw [System.Exception]::new(
+            ("HTTP request failed for {0}. Primary {1} error: {2}. Fallback {3} error: {4}" -f $Url, $primaryTransport, $primaryError, $fallbackTransport, $fallbackError)
+        )
+    }
+}
+
 function Ensure-Http200 {
     param(
         [string]$Url,
@@ -134,14 +399,18 @@ function Ensure-Http200 {
     )
 
     Write-Step ("{0}: {1}" -f $Description, $Url)
+
+    $response = $null
     try {
-        $response = Invoke-WebRequest -Uri $Url -Method GET -Headers $Headers -TimeoutSec 30
+        $response = Invoke-HttpWithFallback -Url $Url -Headers $Headers
     }
     catch {
         Fail ("HTTP request failed for {0}: {1}" -f $Url, $_.Exception.Message)
     }
 
-    if ($response.StatusCode -ne 200) {
+    Write-Step ("{0} via {1}: HTTP {2}" -f $Description, $response.Transport, $response.StatusCode)
+
+    if ([int]$response.StatusCode -ne 200) {
         Fail ("Unexpected HTTP status for {0}: {1}" -f $Url, $response.StatusCode)
     }
 
