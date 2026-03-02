@@ -7,7 +7,9 @@ Django CMS that manages blog and project content and generates static article pa
 1. Create and activate a virtual environment.
 2. Install dependencies:
    `pip install -r requirements.txt`
-3. Configure env from `.env.example`.
+3. Copy `.env.example` to `.env` and adjust values as needed.
+   `.env.example` is the tracked template and source of truth for available app settings.
+   Local `.env` may be shorter because some settings have defaults in `cultnova/settings.py`; keep only safe sample values and placeholders in the template.
 4. Run:
    `python manage.py migrate`
 5. Optional static build:
