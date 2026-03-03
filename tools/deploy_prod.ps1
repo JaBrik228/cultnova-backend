@@ -89,6 +89,458 @@ function Read-KeyValueConfig {
     return $config
 }
 
+function Convert-ToManifestRelativePath {
+    param(
+        [string]$Value,
+        [string]$FieldName
+    )
+
+    if ([string]::IsNullOrWhiteSpace($Value)) {
+        Fail ("Manifest field {0} is required." -f $FieldName)
+    }
+
+    $trimmed = $Value.Trim()
+    if ($trimmed.StartsWith("/") -or $trimmed.StartsWith('\')) {
+        Fail ("Manifest field {0} must be relative: {1}" -f $FieldName, $Value)
+    }
+    if ($trimmed -match "^[A-Za-z]:") {
+        Fail ("Manifest field {0} must not be drive-rooted: {1}" -f $FieldName, $Value)
+    }
+
+    $normalized = $trimmed.Replace('\', "/")
+    while ($normalized.StartsWith("./")) {
+        $normalized = $normalized.Substring(2)
+    }
+
+    $parts = $normalized -split "/"
+    if ($parts.Count -eq 0) {
+        Fail ("Manifest field {0} is empty after normalization." -f $FieldName)
+    }
+
+    foreach ($part in $parts) {
+        if ([string]::IsNullOrWhiteSpace($part) -or $part -eq "." -or $part -eq "..") {
+            Fail ("Manifest field {0} contains invalid path segments: {1}" -f $FieldName, $Value)
+        }
+    }
+
+    return ($parts -join "/")
+}
+
+function Resolve-RepoRelativePath {
+    param(
+        [string]$RepoRoot,
+        [string]$RelativePath,
+        [string]$FieldName
+    )
+
+    $normalized = Convert-ToManifestRelativePath -Value $RelativePath -FieldName $FieldName
+    $repoFullPath = [System.IO.Path]::GetFullPath($RepoRoot)
+    $candidatePath = Join-Path $repoFullPath ($normalized -replace "/", [System.IO.Path]::DirectorySeparatorChar)
+    $resolvedPath = [System.IO.Path]::GetFullPath($candidatePath)
+
+    if (
+        $resolvedPath -ne $repoFullPath -and
+        -not $resolvedPath.StartsWith($repoFullPath + [System.IO.Path]::DirectorySeparatorChar, [System.StringComparison]::OrdinalIgnoreCase)
+    ) {
+        Fail ("Manifest field {0} resolves outside repo root: {1}" -f $FieldName, $RelativePath)
+    }
+
+    return [PSCustomObject]@{
+        RelativePath = $normalized
+        FullPath = $resolvedPath
+    }
+}
+
+function Test-PublicStaticTargetOverlap {
+    param(
+        [string]$Left,
+        [string]$Right
+    )
+
+    return (
+        $Left.Equals($Right, [System.StringComparison]::OrdinalIgnoreCase) -or
+        $Left.StartsWith($Right + "/", [System.StringComparison]::OrdinalIgnoreCase) -or
+        $Right.StartsWith($Left + "/", [System.StringComparison]::OrdinalIgnoreCase)
+    )
+}
+
+function Join-PosixPath {
+    param(
+        [string]$Base,
+        [string]$Child
+    )
+
+    if ([string]::IsNullOrWhiteSpace($Base)) {
+        return (Convert-ToManifestRelativePath -Value $Child -FieldName "path")
+    }
+
+    $trimmedBase = $Base.TrimEnd("/")
+    $trimmedChild = $Child.TrimStart("/")
+
+    if ([string]::IsNullOrWhiteSpace($trimmedChild)) {
+        return $trimmedBase
+    }
+
+    return "{0}/{1}" -f $trimmedBase, $trimmedChild
+}
+
+function Get-PosixDirectoryName {
+    param([string]$Path)
+
+    $trimmed = $Path.TrimEnd("/")
+    $lastSlash = $trimmed.LastIndexOf("/")
+
+    if ($lastSlash -lt 0) {
+        return "."
+    }
+    if ($lastSlash -eq 0) {
+        return "/"
+    }
+
+    return $trimmed.Substring(0, $lastSlash)
+}
+
+function ConvertTo-ShellSingleQuoted {
+    param([string]$Value)
+
+    $escaped = $Value.Replace("'", "'`"`'`"`'")
+    return "'" + $escaped + "'"
+}
+
+function Assert-PublicStaticManifest {
+    param(
+        [string]$RepoRoot,
+        [string]$ManifestPath,
+        $Manifest
+    )
+
+    if ($null -eq $Manifest) {
+        Fail ("Manifest is empty: {0}" -f $ManifestPath)
+    }
+
+    if ($Manifest.version -ne 1) {
+        Fail ("Unsupported public static manifest version in {0}: {1}" -f $ManifestPath, $Manifest.version)
+    }
+
+    $entries = @($Manifest.entries)
+    if ($entries.Count -eq 0) {
+        Fail ("Manifest entries list is empty: {0}" -f $ManifestPath)
+    }
+
+    $normalizedEntries = @()
+    $entryTargets = @()
+
+    foreach ($entry in $entries) {
+        $kind = [string]$entry.kind
+        if ($kind -ne "file" -and $kind -ne "directory") {
+            Fail ("Unsupported manifest entry kind in {0}: {1}" -f $ManifestPath, $kind)
+        }
+
+        $sourceInfo = Resolve-RepoRelativePath -RepoRoot $RepoRoot -RelativePath ([string]$entry.source) -FieldName "source"
+        $targetPath = Convert-ToManifestRelativePath -Value ([string]$entry.target) -FieldName "target"
+
+        if ($kind -eq "file" -and -not (Test-Path -LiteralPath $sourceInfo.FullPath -PathType Leaf)) {
+            Fail ("Manifest source is not a file: {0}" -f $sourceInfo.RelativePath)
+        }
+        if ($kind -eq "directory" -and -not (Test-Path -LiteralPath $sourceInfo.FullPath -PathType Container)) {
+            Fail ("Manifest source is not a directory: {0}" -f $sourceInfo.RelativePath)
+        }
+
+        foreach ($existingTarget in $entryTargets) {
+            if (Test-PublicStaticTargetOverlap -Left $targetPath -Right $existingTarget) {
+                Fail (
+                    "Manifest target overlap in {0}: {1} conflicts with {2}" -f
+                    $ManifestPath,
+                    $targetPath,
+                    $existingTarget
+                )
+            }
+        }
+        $entryTargets += $targetPath
+
+        $prune = $true
+        if ($kind -eq "directory" -and ($entry.PSObject.Properties.Name -contains "prune")) {
+            $prune = [bool]$entry.prune
+        }
+
+        $deployedFiles = @()
+        if ($kind -eq "file") {
+            $deployedFiles = @($targetPath)
+        }
+        else {
+            $directoryFiles = Get-ChildItem -LiteralPath $sourceInfo.FullPath -File -Recurse | Sort-Object FullName
+            foreach ($file in $directoryFiles) {
+                $relativeFilePath = [System.IO.Path]::GetRelativePath($sourceInfo.FullPath, $file.FullName)
+                $normalizedRelativeFilePath = $relativeFilePath.Replace('\', "/")
+                $deployedFiles += (Join-PosixPath -Base $targetPath -Child $normalizedRelativeFilePath)
+            }
+        }
+
+        $normalizedEntries += [PSCustomObject]@{
+            Kind = $kind
+            SourceRelativePath = $sourceInfo.RelativePath
+            SourceFullPath = $sourceInfo.FullPath
+            TargetPath = $targetPath
+            Prune = $prune
+            DeployedFiles = @($deployedFiles | Sort-Object -Unique)
+        }
+    }
+
+    $managedFiles = @($normalizedEntries | ForEach-Object { $_.DeployedFiles } | Sort-Object -Unique)
+    $prunableFiles = @(
+        $normalizedEntries |
+        Where-Object { $_.Prune } |
+        ForEach-Object { $_.DeployedFiles } |
+        Sort-Object -Unique
+    )
+
+    return [PSCustomObject]@{
+        Version = 1
+        ManifestPath = $ManifestPath
+        Entries = $normalizedEntries
+        ManagedFiles = $managedFiles
+        PrunableFiles = $prunableFiles
+    }
+}
+
+function Read-PublicStaticManifest {
+    param(
+        [string]$RepoRoot,
+        [string]$ManifestPath
+    )
+
+    if (-not (Test-Path -LiteralPath $ManifestPath -PathType Leaf)) {
+        Fail ("Public static manifest not found: {0}" -f $ManifestPath)
+    }
+
+    try {
+        $manifest = Get-Content -LiteralPath $ManifestPath -Raw | ConvertFrom-Json
+    }
+    catch {
+        Fail ("Failed to parse public static manifest {0}: {1}" -f $ManifestPath, $_.Exception.Message)
+    }
+
+    return Assert-PublicStaticManifest -RepoRoot $RepoRoot -ManifestPath $ManifestPath -Manifest $manifest
+}
+
+function Get-RemoteManagedStatePath {
+    return "{0}/_deploy_state/public_static_manifest_state.json" -f $script:RemoteCmsRoot.TrimEnd("/")
+}
+
+function Read-RemotePublicStaticState {
+    param([string]$StatePath)
+
+    $command = "if [ -f {0} ]; then cat {0}; fi" -f (ConvertTo-ShellSingleQuoted -Value $StatePath)
+    $result = Invoke-RemoteCapture -Command $command -Description "Deploy: reading previous public static state"
+
+    if ($result.ExitCode -ne 0) {
+        Fail "Failed to read previous public static state from server."
+    }
+
+    if ([string]::IsNullOrWhiteSpace($result.Output)) {
+        return [PSCustomObject]@{
+            Version = 1
+            ManagedFiles = @()
+            PrunableFiles = @()
+        }
+    }
+
+    try {
+        $state = $result.Output | ConvertFrom-Json
+    }
+    catch {
+        Fail ("Failed to parse previous public static state JSON from server: {0}" -f $_.Exception.Message)
+    }
+
+    $managedFiles = @()
+    if ($state.PSObject.Properties.Name -contains "managed_files") {
+        $managedFiles = @($state.managed_files | ForEach-Object { Convert-ToManifestRelativePath -Value ([string]$_) -FieldName "managed_files" } | Sort-Object -Unique)
+    }
+
+    $prunableFiles = @()
+    if ($state.PSObject.Properties.Name -contains "prunable_files") {
+        $prunableFiles = @($state.prunable_files | ForEach-Object { Convert-ToManifestRelativePath -Value ([string]$_) -FieldName "prunable_files" } | Sort-Object -Unique)
+    }
+
+    return [PSCustomObject]@{
+        Version = 1
+        ManagedFiles = $managedFiles
+        PrunableFiles = $prunableFiles
+    }
+}
+
+function Upload-FileViaSftp {
+    param(
+        [string]$LocalPath,
+        [string]$RemotePath,
+        [string]$Description
+    )
+
+    if (-not (Test-Path -LiteralPath $LocalPath -PathType Leaf)) {
+        Fail ("Local file not found for upload: {0}" -f $LocalPath)
+    }
+
+    $uploadPy = @'
+import os
+import sys
+import paramiko
+
+host = os.environ["SSH_HOST"]
+user = os.environ["SSH_USER"]
+password = os.environ["SSH_PASS"]
+local_path = sys.argv[1]
+remote_path = sys.argv[2]
+
+client = paramiko.SSHClient()
+client.set_missing_host_key_policy(paramiko.AutoAddPolicy())
+client.connect(hostname=host, username=user, password=password, timeout=20)
+try:
+    sftp = client.open_sftp()
+    try:
+        sftp.put(local_path, remote_path)
+    finally:
+        sftp.close()
+finally:
+    client.close()
+
+print(remote_path)
+'@
+
+    $uploadScriptPath = [System.IO.Path]::Combine(
+        [System.IO.Path]::GetTempPath(),
+        ("codex_sftp_upload_{0}.py" -f [System.Guid]::NewGuid().ToString("N"))
+    )
+
+    try {
+        Set-Content -LiteralPath $uploadScriptPath -Value $uploadPy -Encoding UTF8
+        Invoke-ProcessChecked -Exe "python" -ArgumentList @($uploadScriptPath, $LocalPath, $RemotePath) -Description $Description
+    }
+    finally {
+        if (Test-Path -LiteralPath $uploadScriptPath) {
+            Remove-Item -LiteralPath $uploadScriptPath -Force -ErrorAction SilentlyContinue
+        }
+    }
+}
+
+function Get-PublicStaticSmokeTargets {
+    param($ManifestInfo)
+
+    $smokeTargets = @()
+    foreach ($entry in $ManifestInfo.Entries) {
+        if ($entry.Kind -eq "file") {
+            $smokeTargets += $entry.TargetPath
+            continue
+        }
+
+        if ($entry.DeployedFiles.Count -le 5) {
+            $smokeTargets += $entry.DeployedFiles
+        }
+        else {
+            $smokeTargets += $entry.DeployedFiles | Select-Object -First 2
+        }
+    }
+
+    return @($smokeTargets | Sort-Object -Unique)
+}
+
+function Sync-PublicStaticAssets {
+    param(
+        [string]$PackageDir,
+        $ManifestInfo,
+        [string]$RemoteAppRoot,
+        [string]$RemoteSiteRoot,
+        [string]$Timestamp
+    )
+
+    $statePath = Get-RemoteManagedStatePath
+    $previousState = Read-RemotePublicStaticState -StatePath $statePath
+    $currentPrunableSet = [System.Collections.Generic.HashSet[string]]::new([System.StringComparer]::OrdinalIgnoreCase)
+    foreach ($path in $ManifestInfo.PrunableFiles) {
+        [void]$currentPrunableSet.Add($path)
+    }
+
+    $filesToPrune = @()
+    foreach ($oldFile in $previousState.PrunableFiles) {
+        if (-not $currentPrunableSet.Contains($oldFile)) {
+            $filesToPrune += $oldFile
+        }
+    }
+    $filesToPrune = @($filesToPrune | Sort-Object -Unique)
+
+    $copyFiles = @($ManifestInfo.ManagedFiles | Sort-Object -Unique)
+    $copyDirectories = @()
+    foreach ($copyFile in $copyFiles) {
+        $copyDirectories += (Get-PosixDirectoryName -Path (Join-PosixPath -Base $RemoteSiteRoot -Child $copyFile))
+    }
+    $copyDirectories = @($copyDirectories | Sort-Object -Unique)
+
+    $pruneDirectories = @()
+    foreach ($pruneFile in $filesToPrune) {
+        $pruneDirectories += (Get-PosixDirectoryName -Path (Join-PosixPath -Base $RemoteSiteRoot -Child $pruneFile))
+    }
+    $pruneDirectories = @($pruneDirectories | Sort-Object -Unique -Descending)
+
+    $statePayload = [ordered]@{
+        version = 1
+        manifest_version = $ManifestInfo.Version
+        written_at = (Get-Date).ToString("o")
+        managed_files = @($ManifestInfo.ManagedFiles | Sort-Object -Unique)
+        prunable_files = @($ManifestInfo.PrunableFiles | Sort-Object -Unique)
+    }
+    $stateJson = $statePayload | ConvertTo-Json -Depth 6
+
+    $syncScriptLines = @(
+        "#!/bin/sh",
+        "set -e",
+        ("trap 'rm -f {0}' EXIT" -f (ConvertTo-ShellSingleQuoted -Value ("{0}/public_static_sync_{1}.sh" -f $script:RemoteTmpDir.TrimEnd("/"), $Timestamp)))
+    )
+
+    foreach ($directory in $copyDirectories) {
+        $syncScriptLines += ("mkdir -p {0}" -f (ConvertTo-ShellSingleQuoted -Value $directory))
+    }
+
+    foreach ($entry in $ManifestInfo.Entries) {
+        foreach ($targetFile in $entry.DeployedFiles) {
+            $sourcePath = Join-PosixPath -Base $RemoteAppRoot -Child $entry.SourceRelativePath
+            if ($entry.Kind -eq "directory") {
+                $relativeSourceFile = $targetFile.Substring($entry.TargetPath.Length).TrimStart("/")
+                $sourcePath = Join-PosixPath -Base $sourcePath -Child $relativeSourceFile
+            }
+
+            $targetPath = Join-PosixPath -Base $RemoteSiteRoot -Child $targetFile
+            $syncScriptLines += ("cp {0} {1}" -f (ConvertTo-ShellSingleQuoted -Value $sourcePath), (ConvertTo-ShellSingleQuoted -Value $targetPath))
+        }
+    }
+
+    foreach ($oldFile in $filesToPrune) {
+        $targetPath = Join-PosixPath -Base $RemoteSiteRoot -Child $oldFile
+        $syncScriptLines += ("rm -f {0}" -f (ConvertTo-ShellSingleQuoted -Value $targetPath))
+    }
+
+    foreach ($directory in $pruneDirectories) {
+        $syncScriptLines += ("rmdir -p --ignore-fail-on-non-empty {0} 2>/dev/null || true" -f (ConvertTo-ShellSingleQuoted -Value $directory))
+    }
+
+    $stateDirectory = Get-PosixDirectoryName -Path $statePath
+    $syncScriptLines += ("mkdir -p {0}" -f (ConvertTo-ShellSingleQuoted -Value $stateDirectory))
+    $syncScriptLines += ("cat > {0} <<'PUBLIC_STATIC_STATE_EOF'" -f (ConvertTo-ShellSingleQuoted -Value $statePath))
+    $syncScriptLines += $stateJson
+    $syncScriptLines += "PUBLIC_STATIC_STATE_EOF"
+    $syncScriptLines += "echo PUBLIC_STATIC_SYNCED=1"
+
+    $localScriptPath = Join-Path $PackageDir ("public_static_sync_{0}.sh" -f $Timestamp)
+    $remoteScriptPath = "{0}/public_static_sync_{1}.sh" -f $script:RemoteTmpDir.TrimEnd("/"), $Timestamp
+    [System.IO.File]::WriteAllText(
+        $localScriptPath,
+        ($syncScriptLines -join "`n"),
+        [System.Text.UTF8Encoding]::new($false)
+    )
+
+    Invoke-Remote -Command ("mkdir -p {0}" -f (ConvertTo-ShellSingleQuoted -Value $script:RemoteTmpDir)) -Description "Deploy: ensuring remote tmp directory"
+    Upload-FileViaSftp -LocalPath $localScriptPath -RemotePath $remoteScriptPath -Description "Deploy: uploading public static sync script"
+    Invoke-Remote -Command ("sh {0}" -f (ConvertTo-ShellSingleQuoted -Value $remoteScriptPath)) -Description "Deploy: syncing public static assets from manifest"
+}
+
 function Assert-CommandExists {
     param([string]$Name)
 
@@ -473,6 +925,7 @@ function Show-RollbackHint {
 try {
     $repoRoot = (Resolve-Path (Join-Path $PSScriptRoot "..")).Path
     $script:SshRunPath = Join-Path $repoRoot "tools\ssh_run.py"
+    $publicStaticManifestPath = Join-Path $repoRoot "tools\public_static_manifest.json"
     $timestamp = Get-Date -Format "yyyy-MM-dd_HH-mm-ss"
 
     Write-Step ("Repo root: {0}" -f $repoRoot)
@@ -484,6 +937,13 @@ try {
     if (-not (Test-Path -LiteralPath $script:SshRunPath)) {
         Fail ("Missing file: {0}" -f $script:SshRunPath)
     }
+
+    $publicStaticManifest = Read-PublicStaticManifest -RepoRoot $repoRoot -ManifestPath $publicStaticManifestPath
+    Write-Step (
+        "Loaded public static manifest: {0} entries, {1} managed files" -f
+        $publicStaticManifest.Entries.Count,
+        $publicStaticManifest.ManagedFiles.Count
+    )
 
     $resolvedConfigPath = Resolve-ConfigPath -RepoRoot $repoRoot -InputPath $ConfigPath
     if (Test-Path -LiteralPath $resolvedConfigPath) {
@@ -570,37 +1030,8 @@ try {
 
     # C. Upload
     $remotePackagePath = "{0}/cultnova_cms_deploy_{1}.tar.gz" -f $script:RemoteTmpDir, $timestamp
-    $env:DEPLOY_LOCAL_PKG = $packagePath
-    $env:DEPLOY_REMOTE_PKG = $remotePackagePath
-
-    $uploadPy = @'
-import os
-import paramiko
-
-host = os.environ["SSH_HOST"]
-user = os.environ["SSH_USER"]
-password = os.environ["SSH_PASS"]
-local_path = os.environ["DEPLOY_LOCAL_PKG"]
-remote_path = os.environ["DEPLOY_REMOTE_PKG"]
-
-client = paramiko.SSHClient()
-client.set_missing_host_key_policy(paramiko.AutoAddPolicy())
-client.connect(hostname=host, username=user, password=password, timeout=20)
-try:
-    sftp = client.open_sftp()
-    try:
-        sftp.put(local_path, remote_path)
-    finally:
-        sftp.close()
-finally:
-    client.close()
-
-print(remote_path)
-'@
-
-    $uploadScriptPath = Join-Path $packageDir "upload_package.py"
-    Set-Content -LiteralPath $uploadScriptPath -Value $uploadPy -Encoding UTF8
-    Invoke-ProcessChecked -Exe "python" -ArgumentList @($uploadScriptPath) -Description "Uploading package via SFTP"
+    Invoke-Remote -Command ("mkdir -p {0}" -f (ConvertTo-ShellSingleQuoted -Value $script:RemoteTmpDir)) -Description "Ensuring remote tmp directory"
+    Upload-FileViaSftp -LocalPath $packagePath -RemotePath $remotePackagePath -Description "Uploading package via SFTP"
 
     Invoke-Remote -Command ("test -f `"{0}`" && echo PACKAGE_OK=1" -f $remotePackagePath) -Description "Verifying uploaded package on server"
 
@@ -644,11 +1075,13 @@ print(remote_path)
         Write-Step "Deploy: no pending migrations detected."
     }
 
+    $collectStaticCmd = 'set -e; app_root="{0}"; venv_py="{1}"; "$venv_py" "$app_root/manage.py" collectstatic --noinput --clear' -f $remoteAppRoot, $remoteVenvPy
+    Invoke-Remote -Command $collectStaticCmd -Description "Deploy: collecting Django static files"
+
     $rebuildCmd = 'set -e; app_root="{0}"; venv_py="{1}"; "$venv_py" "$app_root/manage.py" rebuild_articles_html --delete-unpublished' -f $remoteAppRoot, $remoteVenvPy
     Invoke-Remote -Command $rebuildCmd -Description "Deploy: rebuilding article pages"
 
-    $syncAssetsCmd = 'set -e; app_root="{0}"; site_root="{1}"; mkdir -p "$site_root/css" "$site_root/js" "$site_root/site-icons"; cp "$app_root/static/css/article.css" "$site_root/css/article.css"; cp "$app_root/static/css/articles-slider.css" "$site_root/css/articles-slider.css"; cp "$app_root/static/js/article-slider.js" "$site_root/js/article-slider.js"; cp "$app_root/static/site-icons/play_circle.svg" "$site_root/site-icons/play_circle.svg"; echo ASSETS_SYNCED=1' -f $remoteAppRoot, $remoteSiteRoot
-    Invoke-Remote -Command $syncAssetsCmd -Description "Deploy: syncing public article assets"
+    Sync-PublicStaticAssets -PackageDir $packageDir -ManifestInfo $publicStaticManifest -RemoteAppRoot $remoteAppRoot -RemoteSiteRoot $remoteSiteRoot -Timestamp $timestamp
 
     $restartCmd = 'set -e; tmp_dir="{0}"; touch "$tmp_dir/restart.txt"; echo RESTART_OK=1' -f $script:RemoteTmpDir
     Invoke-Remote -Command $restartCmd -Description "Deploy: restarting app"
@@ -660,13 +1093,23 @@ print(remote_path)
     else {
         $apiArticlesUrl = "{0}/api/articles/" -f $remoteDomainCms
         $apiProjectsUrl = "{0}/api/projects/categories" -f $remoteDomainCms
-        $sliderCssUrl = "{0}/css/articles-slider.css" -f $remoteDomainSite
-        $sliderJsUrl = "{0}/js/article-slider.js" -f $remoteDomainSite
+        $cmsStaticUrls = @(
+            "{0}/static/vendor/jodit/es2021/jodit.min.js" -f $remoteDomainCms,
+            "{0}/static/vendor/jodit/es2021/jodit.min.css" -f $remoteDomainCms,
+            "{0}/static/blog/admin/article_richtext.js" -f $remoteDomainCms,
+            "{0}/static/blog/admin/article_richtext.css" -f $remoteDomainCms
+        )
+        $publicSmokeTargets = Get-PublicStaticSmokeTargets -ManifestInfo $publicStaticManifest
 
         $articlesResponse = Ensure-Http200 -Url $apiArticlesUrl -Description "Smoke: API articles"
         $corsResponse = Ensure-Http200 -Url $apiProjectsUrl -Headers @{ Origin = "https://cultnova.ru" } -Description "Smoke: API CORS"
-        Ensure-Http200 -Url $sliderCssUrl -Description "Smoke: public slider CSS" | Out-Null
-        Ensure-Http200 -Url $sliderJsUrl -Description "Smoke: public slider JS" | Out-Null
+        foreach ($cmsStaticUrl in $cmsStaticUrls) {
+            Ensure-Http200 -Url $cmsStaticUrl -Description "Smoke: CMS static asset" | Out-Null
+        }
+        foreach ($publicTarget in $publicSmokeTargets) {
+            $publicUrl = "{0}/{1}" -f $remoteDomainSite, $publicTarget
+            Ensure-Http200 -Url $publicUrl -Description "Smoke: public manifest asset" | Out-Null
+        }
         $acao = $corsResponse.Headers["Access-Control-Allow-Origin"]
         if ($acao -ne "https://cultnova.ru") {
             Fail ("CORS check failed. Expected Access-Control-Allow-Origin=https://cultnova.ru, got: {0}" -f $acao)

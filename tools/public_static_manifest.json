@@ -1,0 +1,25 @@
+{
+  "version": 1,
+  "entries": [
+    {
+      "kind": "file",
+      "source": "static/css/article.css",
+      "target": "css/article.css"
+    },
+    {
+      "kind": "file",
+      "source": "static/css/articles-slider.css",
+      "target": "css/articles-slider.css"
+    },
+    {
+      "kind": "file",
+      "source": "static/js/article-slider.js",
+      "target": "js/article-slider.js"
+    },
+    {
+      "kind": "file",
+      "source": "static/site-icons/play_circle.svg",
+      "target": "site-icons/play_circle.svg"
+    }
+  ]
+}

@@ -51,6 +51,10 @@ Deploy behavior:
 
 - Deploy always syncs remote Python dependencies from `requirements.txt`.
 - Deploy checks for pending migrations before rebuilding article pages.
+- Deploy always runs `python manage.py collectstatic --noinput --clear` on the remote CMS app.
+- CMS/admin static is published through Django staticfiles into `STATIC_ROOT`.
+- Public site assets managed by this repo are synced from `tools/public_static_manifest.json`.
+- Only repo-managed public assets are synced or pruned; root-level site files that are not present in this repo are left untouched.
 - If pending migrations are detected and `-RunMigrations` was not provided, deploy stops with a clear message and must be re-run with `-RunMigrations`.
 - For the current blog HTML-body / WYSIWYG release, use:
   `powershell -ExecutionPolicy Bypass -File tools/deploy_prod.ps1 -RunMigrations`
