@@ -581,14 +581,9 @@ finally:
 print(remote_path)
 '@
 
-    Write-Step "Uploading package via SFTP"
-    $uploadOut = $uploadPy | python - 2>&1
-    $uploadExit = $LASTEXITCODE
-    $uploadText = ($uploadOut | Out-String).Trim()
-    Write-CommandOutput $uploadText
-    if ($uploadExit -ne 0) {
-        Fail "SFTP upload failed."
-    }
+    $uploadScriptPath = Join-Path $packageDir "upload_package.py"
+    Set-Content -LiteralPath $uploadScriptPath -Value $uploadPy -Encoding UTF8
+    Invoke-ProcessChecked -Exe "python" -ArgumentList @($uploadScriptPath) -Description "Uploading package via SFTP"
 
     Invoke-Remote -Command ("test -f `"{0}`" && echo PACKAGE_OK=1" -f $remotePackagePath) -Description "Verifying uploaded package on server"
 
