@@ -6,6 +6,7 @@ from core.models.base_item import BaseContentBlock, BaseContentItem
 class Articles(BaseContentItem):
     title = models.CharField(max_length=255, verbose_name="\u041d\u0430\u0437\u0432\u0430\u043d\u0438\u0435")
     slug = models.SlugField(unique=True)
+    body_html = models.TextField(blank=True, default="", verbose_name="Body HTML")
     excerpt = models.TextField(blank=True, default="", verbose_name="Excerpt")
     preview_image = models.URLField(
         max_length=1024,
@@ -34,14 +35,10 @@ class Articles(BaseContentItem):
 
 
 class ArticlesContentBlock(BaseContentBlock):
-    TEXT = "text"
-    HEADING = "heading"
     IMAGE = "image"
     VIDEO = "video"
 
     CONTENT_TYPE_CHOICES = [
-        (TEXT, "\u0422\u0435\u043a\u0441\u0442"),
-        (HEADING, "\u0417\u0430\u0433\u043e\u043b\u043e\u0432\u043e\u043a"),
         (IMAGE, "\u0418\u0437\u043e\u0431\u0440\u0430\u0436\u0435\u043d\u0438\u0435"),
         (VIDEO, "\u0412\u0438\u0434\u0435\u043e"),
     ]

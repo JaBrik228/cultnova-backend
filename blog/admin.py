@@ -1,11 +1,24 @@
+import mimetypes
+import re
+
 from django import forms
 from django.conf import settings
 from django.contrib import admin
+from django.http import JsonResponse
+from django.urls import path, reverse
 from django.utils.html import format_html, mark_safe
 
 from core.services.vk_cloud_storage import upload_media_to_vk_cloud
 
 from .models import Articles, ArticlesContentBlock
+from .services.rich_text import (
+    build_inline_image_html,
+    normalize_legacy_text_to_html,
+    sanitize_article_body_html,
+    validate_lead_block_structure,
+    looks_like_html_fragment,
+)
+from .widgets import JoditWidget
 
 
 def _trim(value):
@@ -33,13 +46,38 @@ class ArticlesAdminForm(forms.ModelForm):
         model = Articles
         fields = "__all__"
 
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        if "body_html" in self.fields:
+            self.fields["body_html"].widget = JoditWidget(
+                attrs={
+                    "data-inline-image-upload-url": getattr(self, "inline_image_upload_url", ""),
+                }
+            )
+
     def clean(self):
         cleaned_data = super().clean()
 
+        body_html = cleaned_data.get("body_html") or ""
         seo_title = _trim(cleaned_data.get("seo_title")) or ""
         seo_description = _trim(cleaned_data.get("seo_description")) or ""
         preview_image_alt = _trim(cleaned_data.get("preview_image_alt")) or ""
         upload_image = cleaned_data.get("upload_image")
+
+        if not body_html.strip():
+            self.add_error("body_html", "Article body is required.")
+        else:
+            body_source = body_html if looks_like_html_fragment(body_html) else normalize_legacy_text_to_html(body_html)
+            if re.search(r"<\s*h1(?:\s|>)", body_source, re.IGNORECASE):
+                self.add_error("body_html", "H1 is not allowed inside article body.")
+            else:
+                sanitized_body_html = sanitize_article_body_html(body_html)
+                try:
+                    validate_lead_block_structure(sanitized_body_html)
+                except ValueError as exc:
+                    self.add_error("body_html", str(exc))
+                else:
+                    cleaned_data["body_html"] = sanitized_body_html
 
         if not seo_title:
             self.add_error("seo_title", "SEO title is required.")
@@ -67,6 +105,7 @@ class ArticlesAdminForm(forms.ModelForm):
                 raise forms.ValidationError("Failed to upload media to VK Cloud.")
 
         for field_name in (
+            "body_html",
             "excerpt",
             "preview_image_alt",
             "seo_title",
@@ -96,7 +135,6 @@ class ContentBlockAdminForm(forms.ModelForm):
     def clean(self):
         cleaned_data = super().clean()
         block_type = cleaned_data.get("type")
-        text = _trim(cleaned_data.get("text")) or ""
         media_alt = _trim(cleaned_data.get("media_alt")) or ""
 
         media_file = cleaned_data.get("upload_media")
@@ -105,11 +143,12 @@ class ContentBlockAdminForm(forms.ModelForm):
         frame_file = cleaned_data.get("upload_first_frame")
         current_frame_url = self.instance.first_video_frame if self.instance else None
 
+        if block_type not in {ArticlesContentBlock.IMAGE, ArticlesContentBlock.VIDEO}:
+            raise forms.ValidationError({"type": "Only image and video sidebar media blocks are allowed."})
+
         if block_type == ArticlesContentBlock.IMAGE:
             if not media_file and not current_media_url:
                 raise forms.ValidationError({"upload_media": "Image is required for image block."})
-            if text:
-                raise forms.ValidationError({"text": "Image block cannot contain text."})
             if not media_alt:
                 raise forms.ValidationError({"media_alt": "Alt text is required for image block."})
 
@@ -118,16 +157,6 @@ class ContentBlockAdminForm(forms.ModelForm):
                 raise forms.ValidationError({"upload_media": "Video is required for video block."})
             if not frame_file and not current_frame_url:
                 raise forms.ValidationError({"upload_first_frame": "First frame is required for video block."})
-            if text:
-                raise forms.ValidationError({"text": "Video block cannot contain text."})
-
-        elif block_type in [ArticlesContentBlock.TEXT, ArticlesContentBlock.HEADING]:
-            if not text:
-                raise forms.ValidationError({"text": "Text is required for text or heading block."})
-            if media_file or current_media_url:
-                raise forms.ValidationError({"upload_media": "Text and heading blocks cannot contain media."})
-            if media_alt:
-                raise forms.ValidationError({"media_alt": "Alt text is only used for image blocks."})
 
         return cleaned_data
 
@@ -135,6 +164,7 @@ class ContentBlockAdminForm(forms.ModelForm):
         instance = super().save(commit=False)
         upload_media = self.cleaned_data.get("upload_media")
         upload_first_frame = self.cleaned_data.get("upload_first_frame")
+        block_type = self.cleaned_data.get("type")
 
         if upload_media:
             try:
@@ -148,10 +178,17 @@ class ContentBlockAdminForm(forms.ModelForm):
             except Exception:
                 raise forms.ValidationError("Failed to upload media to VK Cloud.")
 
-        for field_name in ("text", "media_alt", "caption"):
+        instance.text = ""
+        if block_type == ArticlesContentBlock.IMAGE:
+            instance.first_video_frame = None
+
+        for field_name in ("media_alt", "caption"):
             value = self.cleaned_data.get(field_name)
             if isinstance(value, str):
                 setattr(instance, field_name, value.strip())
+
+        if block_type == ArticlesContentBlock.VIDEO:
+            instance.media_alt = ""
 
         if commit:
             instance.save()
@@ -163,10 +200,10 @@ class ContentBlockInline(admin.StackedInline):
     model = ArticlesContentBlock
     form = ContentBlockAdminForm
     extra = 1
+    verbose_name_plural = "Sidebar media"
     fields = (
         "type",
         "order",
-        "text",
         "upload_media",
         "media",
         "media_alt",
@@ -209,7 +246,7 @@ class ArticlesAdmin(admin.ModelAdmin):
         (
             "Content",
             {
-                "fields": ("title", "slug", "excerpt", "is_published"),
+                "fields": ("title", "slug", "body_html", "excerpt", "is_published"),
             },
         ),
         (
@@ -245,6 +282,56 @@ class ArticlesAdmin(admin.ModelAdmin):
             },
         ),
     )
+
+    def get_form(self, request, obj=None, change=False, **kwargs):
+        form = super().get_form(request, obj, change, **kwargs)
+        form.inline_image_upload_url = reverse("admin:blog_articles_inline_image_upload")
+        return form
+
+    def get_urls(self):
+        custom_urls = [
+            path(
+                "inline-image-upload/",
+                self.admin_site.admin_view(self.inline_image_upload_view),
+                name="blog_articles_inline_image_upload",
+            ),
+        ]
+        return custom_urls + super().get_urls()
+
+    def inline_image_upload_view(self, request):
+        if request.method != "POST":
+            return JsonResponse({"success": False, "error": "POST method is required."}, status=405)
+
+        uploaded_file = request.FILES.get("file")
+        alt = (request.POST.get("alt") or "").strip()
+        caption = (request.POST.get("caption") or "").strip()
+
+        if not uploaded_file:
+            return JsonResponse({"success": False, "error": "Image file is required."}, status=400)
+
+        if not alt:
+            return JsonResponse({"success": False, "error": "Alt text is required."}, status=400)
+
+        if uploaded_file.size > 10 * 1024 * 1024:
+            return JsonResponse({"success": False, "error": "Image size must not exceed 10 MB."}, status=400)
+
+        allowed_content_types = {"image/jpeg", "image/png", "image/webp"}
+        guessed_content_type, _ = mimetypes.guess_type(uploaded_file.name)
+        content_type = (uploaded_file.content_type or guessed_content_type or "").lower()
+
+        if content_type not in allowed_content_types:
+            return JsonResponse(
+                {"success": False, "error": "Only JPG, PNG and WEBP images are supported."},
+                status=400,
+            )
+
+        try:
+            file_url = upload_media_to_vk_cloud(uploaded_file, folder="articles/inline")
+        except Exception:
+            return JsonResponse({"success": False, "error": "Failed to upload image to VK Cloud."}, status=500)
+
+        html = build_inline_image_html(file_url, alt, caption)
+        return JsonResponse({"success": True, "url": file_url, "html": html})
 
     def image_preview_box(self, obj):
         if obj.preview_image:

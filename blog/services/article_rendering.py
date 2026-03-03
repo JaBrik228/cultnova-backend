@@ -1,8 +1,10 @@
 import json
 
 from django.conf import settings
-from django.utils.html import escape
+from django.utils import timezone
 from django.utils.safestring import mark_safe
+
+from .rich_text import sanitize_article_body_html
 
 
 def build_public_article_path(slug: str) -> str:
@@ -23,26 +25,33 @@ def _normalize_text(value: str) -> str:
     return value.strip()
 
 
-def _build_article_body_and_media(article):
+def _format_article_date_ru(dt) -> str:
+    month_names = [
+        "января",
+        "февраля",
+        "марта",
+        "апреля",
+        "мая",
+        "июня",
+        "июля",
+        "августа",
+        "сентября",
+        "октября",
+        "ноября",
+        "декабря",
+    ]
+    if timezone.is_aware(dt):
+        dt = timezone.localtime(dt)
+    return f"{dt.day} {month_names[dt.month - 1]} {dt.year}"
+
+
+def _build_article_media(article):
     blocks = article.blocks.all().order_by("order")
-    html_parts = []
     media_list = []
     has_video = False
 
     for block in blocks:
-        block_text = _normalize_text(block.text)
-
-        if block.type == "heading":
-            if block_text:
-                html_parts.append(f'<h3 class="article__subtitle">{escape(block_text)}</h3>')
-        elif block.type == "text":
-            if block_text:
-                paragraphs = block_text.split("\n")
-                for paragraph in paragraphs:
-                    paragraph = _normalize_text(paragraph)
-                    if paragraph:
-                        html_parts.append(f"<p>{escape(paragraph)}</p>")
-        elif block.type == "image":
+        if block.type == "image":
             if block.media:
                 media_list.append(
                     {
@@ -64,7 +73,7 @@ def _build_article_body_and_media(article):
                     }
                 )
 
-    return mark_safe("".join(html_parts)), media_list, has_video
+    return media_list, has_video
 
 
 def _build_related_articles(article, limit=6):
@@ -93,7 +102,8 @@ def _build_related_articles(article, limit=6):
 
 
 def build_article_render_context(article):
-    body_html, media_list, has_video = _build_article_body_and_media(article)
+    sanitized_body_html = sanitize_article_body_html(getattr(article, "body_html", ""))
+    media_list, has_video = _build_article_media(article)
     related_articles = _build_related_articles(article)
 
     article_path = build_public_article_path(article.slug)
@@ -116,12 +126,12 @@ def build_article_render_context(article):
     twitter_image = og_image
     twitter_image_alt = og_image_alt
 
-    article.body_html = body_html
+    article.body_html = mark_safe(sanitized_body_html)
     article.media = media_list
     article.has_video = has_video
     article.url = article_url
     article.path = article_path
-    article.published_at_display = article.created_at.strftime("%d.%m.%Y")
+    article.published_at_display = _format_article_date_ru(article.created_at)
     article.published_at_iso = article.created_at.isoformat()
     article.updated_at_iso = article.updated_at.isoformat() if article.updated_at else article.created_at.isoformat()
 
