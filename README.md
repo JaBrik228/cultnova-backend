@@ -46,3 +46,12 @@ Options:
 
 - Run migrations: `powershell -ExecutionPolicy Bypass -File tools/deploy_prod.ps1 -RunMigrations`
 - Skip smoke checks: `powershell -ExecutionPolicy Bypass -File tools/deploy_prod.ps1 -SkipSmoke`
+
+Manual SSH / rollback helper:
+
+- Default mode (auto-loads `.env.deploy` from repo root):
+  `python tools/ssh_run.py "echo connected && whoami"`
+- Explicit config path:
+  `python tools/ssh_run.py --config .env.deploy "echo connected && whoami"`
+
+Rollback hints printed by `tools/deploy_prod.ps1` are intended to be run from repo root and now work without manually exporting `SSH_HOST`, `SSH_USER`, or `SSH_PASS`.

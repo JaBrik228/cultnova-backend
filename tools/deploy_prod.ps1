@@ -425,6 +425,7 @@ function Show-RollbackHint {
     Write-Host ""
     Write-Host "Rollback command:"
     $rollbackCmd = "set -e; tar -xzf `"{0}`" -C `"{1}`"; touch `"{2}/restart.txt`"" -f $script:BackupPath, $script:RemoteCmsRoot, $script:RemoteTmpDir
+    Write-Host "Run from repo root. ssh_run.py will auto-load .env.deploy by default."
     Write-Host ("python tools/ssh_run.py '{0}'" -f $rollbackCmd)
 }
 
