@@ -105,8 +105,25 @@ function Invoke-ProcessCapture {
     )
 
     Write-Step $Description
-    $output = & $Exe @ArgumentList 2>&1
-    $exitCode = $LASTEXITCODE
+    $previousErrorActionPreference = $ErrorActionPreference
+    $hasNativePreference = $null -ne (Get-Variable -Name PSNativeCommandUseErrorActionPreference -ErrorAction SilentlyContinue)
+    if ($hasNativePreference) {
+        $previousNativePreference = $global:PSNativeCommandUseErrorActionPreference
+        $global:PSNativeCommandUseErrorActionPreference = $false
+    }
+
+    try {
+        $ErrorActionPreference = "Continue"
+        $output = & $Exe @ArgumentList 2>&1
+        $exitCode = $LASTEXITCODE
+    }
+    finally {
+        $ErrorActionPreference = $previousErrorActionPreference
+        if ($hasNativePreference) {
+            $global:PSNativeCommandUseErrorActionPreference = $previousNativePreference
+        }
+    }
+
     $text = ($output | Out-String).Trim()
     Write-CommandOutput $text
 
