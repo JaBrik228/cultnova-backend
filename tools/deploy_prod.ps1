@@ -97,7 +97,7 @@ function Assert-CommandExists {
     }
 }
 
-function Invoke-ProcessChecked {
+function Invoke-ProcessCapture {
     param(
         [string]$Exe,
         [string[]]$ArgumentList,
@@ -110,11 +110,35 @@ function Invoke-ProcessChecked {
     $text = ($output | Out-String).Trim()
     Write-CommandOutput $text
 
-    if ($exitCode -ne 0) {
-        Fail ("Command failed ({0}): {1} {2}" -f $exitCode, $Exe, ($ArgumentList -join " "))
+    return [PSCustomObject]@{
+        ExitCode = $exitCode
+        Output = $text
+    }
+}
+
+function Invoke-ProcessChecked {
+    param(
+        [string]$Exe,
+        [string[]]$ArgumentList,
+        [string]$Description
+    )
+
+    $result = Invoke-ProcessCapture -Exe $Exe -ArgumentList $ArgumentList -Description $Description
+
+    if ($result.ExitCode -ne 0) {
+        Fail ("Command failed ({0}): {1} {2}" -f $result.ExitCode, $Exe, ($ArgumentList -join " "))
     }
 
-    return $text
+    return $result.Output
+}
+
+function Invoke-RemoteCapture {
+    param(
+        [string]$Command,
+        [string]$Description
+    )
+
+    return Invoke-ProcessCapture -Exe "python" -ArgumentList @($script:SshRunPath, $Command) -Description $Description
 }
 
 function Invoke-Remote {
@@ -580,17 +604,42 @@ print(remote_path)
     Write-Step ("Backup created: {0}" -f $script:BackupPath)
 
     # E. Deploy
-    $migratePart = ""
     if ($RunMigrations) {
-        $migratePart = '"$venv_py" "$app_root/manage.py" migrate --noinput;'
         Write-Step "Migrations are enabled (-RunMigrations)."
     }
     else {
-        Write-Step "Migrations are skipped (default)."
+        Write-Step "Migrations will only run when pending migrations are detected and -RunMigrations is provided."
     }
 
-    $deployCmd = 'set -e; pkg="{0}"; app_root="{1}"; tmp_dir="{2}"; venv_py="{3}"; site_root="{4}"; test -f "$pkg"; tar -xzf "$pkg" -C "$app_root"; touch "$tmp_dir/restart.txt"; {5} "$venv_py" "$app_root/manage.py" rebuild_articles_html --delete-unpublished; mkdir -p "$site_root/css" "$site_root/js" "$site_root/site-icons"; cp "$app_root/static/css/article.css" "$site_root/css/article.css"; cp "$app_root/static/css/articles-slider.css" "$site_root/css/articles-slider.css"; cp "$app_root/static/js/article-slider.js" "$site_root/js/article-slider.js"; cp "$app_root/static/site-icons/play_circle.svg" "$site_root/site-icons/play_circle.svg"; echo DEPLOY_OK=1' -f $remotePackagePath, $remoteAppRoot, $script:RemoteTmpDir, $remoteVenvPy, $remoteSiteRoot, $migratePart
-    Invoke-Remote -Command $deployCmd -Description "Deploying package and rebuilding article pages"
+    $extractCmd = 'set -e; pkg="{0}"; app_root="{1}"; test -f "$pkg"; tar -xzf "$pkg" -C "$app_root"; echo EXTRACT_OK=1' -f $remotePackagePath, $remoteAppRoot
+    Invoke-Remote -Command $extractCmd -Description "Deploy: extracting package on server"
+
+    $installRequirementsCmd = 'set -e; app_root="{0}"; venv_py="{1}"; "$venv_py" -m pip install --disable-pip-version-check -r "$app_root/requirements.txt"' -f $remoteAppRoot, $remoteVenvPy
+    Invoke-Remote -Command $installRequirementsCmd -Description "Deploy: installing python requirements"
+
+    $migrationCheckCmd = 'set -e; app_root="{0}"; venv_py="{1}"; "$venv_py" "$app_root/manage.py" migrate --check --noinput' -f $remoteAppRoot, $remoteVenvPy
+    $migrationCheck = Invoke-RemoteCapture -Command $migrationCheckCmd -Description "Deploy: checking pending migrations"
+
+    if ($migrationCheck.ExitCode -ne 0) {
+        if (-not $RunMigrations) {
+            Fail "Pending migrations detected. Re-run deploy with -RunMigrations. Remote output is shown above."
+        }
+
+        $migrateCmd = 'set -e; app_root="{0}"; venv_py="{1}"; "$venv_py" "$app_root/manage.py" migrate --noinput' -f $remoteAppRoot, $remoteVenvPy
+        Invoke-Remote -Command $migrateCmd -Description "Deploy: applying migrations"
+    }
+    else {
+        Write-Step "Deploy: no pending migrations detected."
+    }
+
+    $rebuildCmd = 'set -e; app_root="{0}"; venv_py="{1}"; "$venv_py" "$app_root/manage.py" rebuild_articles_html --delete-unpublished' -f $remoteAppRoot, $remoteVenvPy
+    Invoke-Remote -Command $rebuildCmd -Description "Deploy: rebuilding article pages"
+
+    $syncAssetsCmd = 'set -e; app_root="{0}"; site_root="{1}"; mkdir -p "$site_root/css" "$site_root/js" "$site_root/site-icons"; cp "$app_root/static/css/article.css" "$site_root/css/article.css"; cp "$app_root/static/css/articles-slider.css" "$site_root/css/articles-slider.css"; cp "$app_root/static/js/article-slider.js" "$site_root/js/article-slider.js"; cp "$app_root/static/site-icons/play_circle.svg" "$site_root/site-icons/play_circle.svg"; echo ASSETS_SYNCED=1' -f $remoteAppRoot, $remoteSiteRoot
+    Invoke-Remote -Command $syncAssetsCmd -Description "Deploy: syncing public article assets"
+
+    $restartCmd = 'set -e; tmp_dir="{0}"; touch "$tmp_dir/restart.txt"; echo RESTART_OK=1' -f $script:RemoteTmpDir
+    Invoke-Remote -Command $restartCmd -Description "Deploy: restarting app"
 
     # F. Smoke-check
     if ($SkipSmoke) {
