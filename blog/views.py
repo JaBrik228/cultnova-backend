@@ -1,10 +1,14 @@
 from django.core.paginator import Paginator
+from django.db.models import Prefetch
 from django.http import JsonResponse
 from django.shortcuts import get_object_or_404, render
 
-from blog.services.article_rendering import build_article_render_context, build_public_article_path
+from blog.services.article_rendering import (
+    build_article_render_context,
+    build_public_article_path,
+)
 
-from .models import Articles
+from .models import Articles, ArticlesContentBlock
 
 
 def _sanitize_limit(raw_value, default=10, max_value=100):
@@ -19,7 +23,21 @@ def get_articles_list(request):
     page = request.GET.get("page", 1)
     limit = _sanitize_limit(request.GET.get("limit", 10))
 
-    articles_qs = Articles.objects.filter(is_published=True).order_by("-created_at")
+    image_blocks_prefetch = Prefetch(
+        "blocks",
+        queryset=ArticlesContentBlock.objects.filter(
+            type=ArticlesContentBlock.IMAGE,
+            media__isnull=False,
+        )
+        .exclude(media="")
+        .order_by("order"),
+        to_attr="image_blocks",
+    )
+    articles_qs = (
+        Articles.objects.filter(is_published=True)
+        .prefetch_related(image_blocks_prefetch)
+        .order_by("-created_at")
+    )
     paginator = Paginator(articles_qs, limit)
     articles_page = paginator.get_page(page)
 
@@ -33,6 +51,13 @@ def get_articles_list(request):
     }
 
     for article in articles_page:
+        photos = [
+            {
+                "url": block.media,
+                "alt": (block.media_alt or "").strip() or article.title,
+            }
+            for block in getattr(article, "image_blocks", [])
+        ]
         payload["data"].append(
             {
                 "id": article.id,
@@ -42,6 +67,8 @@ def get_articles_list(request):
                 "preview_image": article.preview_image or None,
                 "preview_image_alt": (article.preview_image_alt or "").strip(),
                 "url": build_public_article_path(article.slug),
+                "photos": photos,
+                "publication_date": article.created_at.isoformat(),
             }
         )
 

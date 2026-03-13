@@ -1,11 +1,13 @@
-from datetime import datetime
+import tempfile
+from datetime import datetime, timedelta
+from pathlib import Path
 from unittest.mock import patch
 
 from django.contrib.auth import get_user_model
 from django.core.files.uploadedfile import SimpleUploadedFile
 from django.db import connection
 from django.db.migrations.executor import MigrationExecutor
-from django.test import TestCase, TransactionTestCase
+from django.test import TestCase, TransactionTestCase, override_settings
 from django.urls import reverse
 from django.utils import timezone
 
@@ -124,6 +126,99 @@ class ArticleRenderingTests(TestCase):
         self.assertTrue(rendered_article.has_video)
 
 
+class ArticleApiTests(TestCase):
+    def test_articles_list_returns_publication_date_and_sidebar_photos_only(self):
+        article = Articles.objects.create(
+            title="API Article",
+            slug="api-article",
+            body_html='<p>Body</p><figure><img src="https://example.com/inline.jpg" alt="Inline"></figure>',
+            excerpt="Excerpt",
+            seo_description="SEO Description",
+            is_published=True,
+        )
+        created_at = timezone.make_aware(datetime(2026, 1, 20, 10, 30))
+        Articles.objects.filter(pk=article.pk).update(created_at=created_at)
+        article.refresh_from_db()
+
+        ArticlesContentBlock.objects.create(
+            article=article,
+            type=ArticlesContentBlock.IMAGE,
+            order=1,
+            media="https://example.com/photo-1.jpg",
+            media_alt="Photo alt",
+        )
+        ArticlesContentBlock.objects.create(
+            article=article,
+            type=ArticlesContentBlock.IMAGE,
+            order=2,
+            media="https://example.com/photo-2.jpg",
+            media_alt="",
+        )
+        ArticlesContentBlock.objects.create(
+            article=article,
+            type=ArticlesContentBlock.VIDEO,
+            order=3,
+            media="https://example.com/video.mp4",
+        )
+
+        response = self.client.get(reverse("blog:articles_list"))
+
+        self.assertEqual(response.status_code, 200)
+        payload = response.json()
+        self.assertEqual(len(payload["data"]), 1)
+        item = payload["data"][0]
+
+        self.assertEqual(item["publication_date"], article.created_at.isoformat())
+        self.assertEqual(
+            item["photos"],
+            [
+                {"url": "https://example.com/photo-1.jpg", "alt": "Photo alt"},
+                {"url": "https://example.com/photo-2.jpg", "alt": "API Article"},
+            ],
+        )
+        self.assertNotIn("https://example.com/inline.jpg", str(item["photos"]))
+        self.assertNotIn("video.mp4", str(item["photos"]))
+
+    def test_articles_list_returns_empty_photos_and_keeps_photos_scoped_per_article(self):
+        first_article = Articles.objects.create(
+            title="First Article",
+            slug="first-article",
+            body_html="<p>Body</p>",
+            excerpt="Excerpt",
+            seo_description="SEO Description",
+            is_published=True,
+        )
+        second_article = Articles.objects.create(
+            title="Second Article",
+            slug="second-article",
+            body_html="<p>Body</p>",
+            excerpt="Excerpt",
+            seo_description="SEO Description",
+            is_published=True,
+        )
+
+        ArticlesContentBlock.objects.create(
+            article=first_article,
+            type=ArticlesContentBlock.IMAGE,
+            order=1,
+            media="https://example.com/first-photo.jpg",
+            media_alt="First photo alt",
+        )
+
+        response = self.client.get(reverse("blog:articles_list"), {"limit": 10})
+
+        self.assertEqual(response.status_code, 200)
+        payload = response.json()
+        self.assertEqual(len(payload["data"]), 2)
+
+        items_by_slug = {item["slug"]: item for item in payload["data"]}
+        self.assertEqual(
+            items_by_slug["first-article"]["photos"],
+            [{"url": "https://example.com/first-photo.jpg", "alt": "First photo alt"}],
+        )
+        self.assertEqual(items_by_slug["second-article"]["photos"], [])
+
+
 class MigrationTestCase(TransactionTestCase):
     migrate_from = None
     migrate_to = None
@@ -239,3 +334,80 @@ class InlineImageUploadAdminTests(TestCase):
         self.assertIn("<figcaption>Inline caption</figcaption>", payload["html"])
         self.assertIn('loading="lazy"', payload["html"])
         upload_mock.assert_called_once()
+
+
+class ArticleStaticGenerationSignalTests(TestCase):
+    @override_settings(SITE_PUBLIC_BASE_URL="https://example.com")
+    def test_article_html_and_sitemap_follow_slug_and_publish_state(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            with override_settings(GENERATED_HTML_PAGES_PATH=temp_dir):
+                with self.captureOnCommitCallbacks(execute=True):
+                    article = Articles.objects.create(
+                        title="Static Article",
+                        slug="static-article",
+                        body_html="<p>Body</p>",
+                        excerpt="Excerpt",
+                        seo_title="SEO",
+                        seo_description="SEO",
+                        is_published=True,
+                    )
+
+                initial_target = Path(temp_dir) / "articles" / "static-article" / "index.html"
+                sitemap_path = Path(temp_dir) / "sitemap.xml"
+
+                self.assertTrue(initial_target.exists())
+                self.assertIn("/articles/static-article/", sitemap_path.read_text(encoding="utf-8"))
+
+                with self.captureOnCommitCallbacks(execute=True):
+                    article.slug = "renamed-article"
+                    article.save(update_fields=["slug"])
+
+                renamed_target = Path(temp_dir) / "articles" / "renamed-article" / "index.html"
+                renamed_sitemap = sitemap_path.read_text(encoding="utf-8")
+
+                self.assertFalse(initial_target.exists())
+                self.assertTrue(renamed_target.exists())
+                self.assertIn("/articles/renamed-article/", renamed_sitemap)
+                self.assertNotIn("/articles/static-article/", renamed_sitemap)
+
+                with self.captureOnCommitCallbacks(execute=True):
+                    article.is_published = False
+                    article.save(update_fields=["is_published"])
+
+                self.assertFalse(renamed_target.exists())
+                self.assertNotIn("/articles/renamed-article/", sitemap_path.read_text(encoding="utf-8"))
+
+    @override_settings(SITE_PUBLIC_BASE_URL="https://example.com")
+    def test_block_save_updates_article_lastmod_in_sitemap(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            with override_settings(GENERATED_HTML_PAGES_PATH=temp_dir):
+                with self.captureOnCommitCallbacks(execute=True):
+                    article = Articles.objects.create(
+                        title="Updated Article",
+                        slug="updated-article",
+                        body_html="<p>Body</p>",
+                        excerpt="Excerpt",
+                        seo_title="SEO",
+                        seo_description="SEO",
+                        is_published=True,
+                    )
+
+                older_timestamp = timezone.now() - timedelta(days=1)
+                Articles.objects.filter(pk=article.pk).update(updated_at=older_timestamp)
+                article.refresh_from_db()
+
+                with self.captureOnCommitCallbacks(execute=True):
+                    ArticlesContentBlock.objects.create(
+                        article=article,
+                        type=ArticlesContentBlock.IMAGE,
+                        order=1,
+                        media="https://example.com/image.jpg",
+                        media_alt="Image alt",
+                    )
+
+                article.refresh_from_db()
+                sitemap = (Path(temp_dir) / "sitemap.xml").read_text(encoding="utf-8")
+
+                self.assertGreater(article.updated_at, older_timestamp)
+                self.assertIn(article.updated_at.isoformat(timespec="seconds"), sitemap)
+                self.assertIn("/articles/updated-article/", sitemap)
