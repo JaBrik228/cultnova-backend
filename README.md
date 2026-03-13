@@ -1,6 +1,6 @@
 # Cultnova Backend
 
-Django CMS that manages blog and project content and generates static article pages.
+Django CMS that manages blog and project content and generates static detail pages.
 
 ## Local run (prod-like)
 
@@ -29,10 +29,39 @@ Generated output format:
 
 - `articles/<slug>/index.html` (public URL: `/articles/<slug>/`)
 
+## Projects static generation
+
+- Single project generation happens automatically by signals on project/media save/delete.
+- Full rebuild:
+  `python manage.py rebuild_projects_html`
+- Rebuild and remove unpublished pages:
+  `python manage.py rebuild_projects_html --delete-unpublished`
+
+Generated output format:
+
+- `projects/<slug>/index.html` (public URL: `/projects/<slug>/`)
+
+## Sitemap generation
+
+- Backend owns the final public `sitemap.xml`.
+- Source of truth is the current content of `GENERATED_HTML_PAGES_PATH`.
+- Static `index.html` pages are discovered from disk, `noindex` pages are skipped, and article/project detail page `lastmod` values are taken from the database.
+- Manual rebuild:
+  `python manage.py rebuild_sitemap`
+- `sitemap.xml` is refreshed automatically after article/project publish, unpublish, slug change, delete, and content-block updates.
+
 ## SEO in article pages
 
 `templates/article_detail.html` renders common SEO tags (canonical, robots, OG/Twitter).
 Current code provides a minimal `article.seo` dict (title/description) and falls back to defaults for other tags.
+
+## SEO and HTML body in project pages
+
+- `templates/project_detail.html` renders canonical, robots, OG/Twitter meta, and JSON-LD for project pages.
+- Project content is managed through:
+  - `Projects.body_html` (sanitized rich HTML),
+  - sidebar media blocks (`image` / `video`) with `media_alt` and `caption`,
+  - SEO fields (`seo_title`, `seo_description`, `seo_keywords`, `seo_robots`, `canonical_url`).
 
 ## Production deploy (one-click)
 
@@ -50,11 +79,16 @@ Options:
 Deploy behavior:
 
 - Deploy always syncs remote Python dependencies from `requirements.txt`.
-- Deploy checks for pending migrations before rebuilding article pages.
+- Deploy checks for pending migrations before rebuilding generated pages.
 - Deploy always runs `python manage.py collectstatic --noinput --clear` on the remote CMS app.
+- Deploy always runs:
+  `python manage.py rebuild_articles_html --delete-unpublished`
+  `python manage.py rebuild_projects_html --delete-unpublished`
+  `python manage.py rebuild_sitemap`
 - CMS/admin static is published through Django staticfiles into `STATIC_ROOT`.
 - Public site assets managed by this repo are synced from `tools/public_static_manifest.json`.
 - Only repo-managed public assets are synced or pruned; root-level site files that are not present in this repo are left untouched.
+- Deploy resolves the actual `GENERATED_HTML_PAGES_PATH` on the server and copies `sitemap.xml` into the public site root when the generation directory differs from `REMOTE_SITE_ROOT`.
 - If pending migrations are detected and `-RunMigrations` was not provided, deploy stops with a clear message and must be re-run with `-RunMigrations`.
 - For the current blog HTML-body / WYSIWYG release, use:
   `powershell -ExecutionPolicy Bypass -File tools/deploy_prod.ps1 -RunMigrations`

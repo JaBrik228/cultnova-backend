@@ -78,3 +78,8 @@ runserver_prod_like.out.log
 bg_wmic_test.txt
 db.sqlite3
 .env
+
+# generated
+generated_pages/
+staticfiles/
+.playwright-cli/

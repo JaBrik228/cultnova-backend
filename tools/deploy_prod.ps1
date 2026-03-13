@@ -200,6 +200,28 @@ function Get-PosixDirectoryName {
     return $trimmed.Substring(0, $lastSlash)
 }
 
+function Get-RelativePathNormalized {
+    param(
+        [string]$BasePath,
+        [string]$ChildPath
+    )
+
+    $baseFullPath = [System.IO.Path]::GetFullPath($BasePath)
+    $childFullPath = [System.IO.Path]::GetFullPath($ChildPath)
+
+    $baseWithSeparator = $baseFullPath
+    if (-not $baseWithSeparator.EndsWith([System.IO.Path]::DirectorySeparatorChar)) {
+        $baseWithSeparator += [System.IO.Path]::DirectorySeparatorChar
+    }
+
+    $baseUri = [System.Uri]::new($baseWithSeparator)
+    $childUri = [System.Uri]::new($childFullPath)
+    $relativeUri = $baseUri.MakeRelativeUri($childUri)
+    $relativePath = [System.Uri]::UnescapeDataString($relativeUri.ToString())
+
+    return $relativePath.Replace('\', "/")
+}
+
 function ConvertTo-ShellSingleQuoted {
     param([string]$Value)
 
@@ -270,8 +292,7 @@ function Assert-PublicStaticManifest {
         else {
             $directoryFiles = Get-ChildItem -LiteralPath $sourceInfo.FullPath -File -Recurse | Sort-Object FullName
             foreach ($file in $directoryFiles) {
-                $relativeFilePath = [System.IO.Path]::GetRelativePath($sourceInfo.FullPath, $file.FullName)
-                $normalizedRelativeFilePath = $relativeFilePath.Replace('\', "/")
+                $normalizedRelativeFilePath = Get-RelativePathNormalized -BasePath $sourceInfo.FullPath -ChildPath $file.FullName
                 $deployedFiles += (Join-PosixPath -Base $targetPath -Child $normalizedRelativeFilePath)
             }
         }
@@ -1078,8 +1099,37 @@ try {
     $collectStaticCmd = 'set -e; app_root="{0}"; venv_py="{1}"; "$venv_py" "$app_root/manage.py" collectstatic --noinput --clear' -f $remoteAppRoot, $remoteVenvPy
     Invoke-Remote -Command $collectStaticCmd -Description "Deploy: collecting Django static files"
 
-    $rebuildCmd = 'set -e; app_root="{0}"; venv_py="{1}"; "$venv_py" "$app_root/manage.py" rebuild_articles_html --delete-unpublished' -f $remoteAppRoot, $remoteVenvPy
-    Invoke-Remote -Command $rebuildCmd -Description "Deploy: rebuilding article pages"
+    $quotedRemoteVenvPy = ConvertTo-ShellSingleQuoted -Value $remoteVenvPy
+    $quotedManagePy = ConvertTo-ShellSingleQuoted -Value ("{0}/manage.py" -f $remoteAppRoot)
+    $generatedPagesRootCmd = "set -e; {0} {1} shell -c 'from core.services.build_item_html import get_generated_pages_root; print(get_generated_pages_root())'" -f `
+        $quotedRemoteVenvPy, `
+        $quotedManagePy
+    $generatedPagesRoot = (Invoke-Remote -Command $generatedPagesRootCmd -Description "Deploy: resolving generated pages root").Trim()
+    if ([string]::IsNullOrWhiteSpace($generatedPagesRoot)) {
+        Fail "Deploy: generated pages root resolved to an empty value."
+    }
+    $generatedPagesRoot = $generatedPagesRoot.TrimEnd("/")
+    Write-Step ("Deploy: generated pages root is {0}" -f $generatedPagesRoot)
+
+    $rebuildArticlesCmd = 'set -e; app_root="{0}"; venv_py="{1}"; "$venv_py" "$app_root/manage.py" rebuild_articles_html --delete-unpublished' -f $remoteAppRoot, $remoteVenvPy
+    Invoke-Remote -Command $rebuildArticlesCmd -Description "Deploy: rebuilding article pages"
+
+    $rebuildProjectsCmd = 'set -e; app_root="{0}"; venv_py="{1}"; "$venv_py" "$app_root/manage.py" rebuild_projects_html --delete-unpublished' -f $remoteAppRoot, $remoteVenvPy
+    Invoke-Remote -Command $rebuildProjectsCmd -Description "Deploy: rebuilding project pages"
+
+    $rebuildSitemapCmd = 'set -e; app_root="{0}"; venv_py="{1}"; "$venv_py" "$app_root/manage.py" rebuild_sitemap' -f $remoteAppRoot, $remoteVenvPy
+    Invoke-Remote -Command $rebuildSitemapCmd -Description "Deploy: rebuilding sitemap.xml"
+
+    if ($generatedPagesRoot -ne $remoteSiteRoot) {
+        $copySitemapCmd = 'set -e; generated_root="{0}"; site_root="{1}"; test -f "$generated_root/sitemap.xml"; mkdir -p "$site_root"; cp "$generated_root/sitemap.xml" "$site_root/sitemap.xml"; chmod 644 "$site_root/sitemap.xml"' -f $generatedPagesRoot, $remoteSiteRoot
+        Invoke-Remote -Command $copySitemapCmd -Description "Deploy: copying sitemap.xml to public site root"
+    }
+    else {
+        Write-Step "Deploy: sitemap.xml is already generated directly in the public site root."
+    }
+
+    $chmodSitemapCmd = 'set -e; site_root="{0}"; test -f "$site_root/sitemap.xml"; chmod 644 "$site_root/sitemap.xml"' -f $remoteSiteRoot
+    Invoke-Remote -Command $chmodSitemapCmd -Description "Deploy: setting public permissions on sitemap.xml"
 
     Sync-PublicStaticAssets -PackageDir $packageDir -ManifestInfo $publicStaticManifest -RemoteAppRoot $remoteAppRoot -RemoteSiteRoot $remoteSiteRoot -Timestamp $timestamp
 
@@ -1093,6 +1143,7 @@ try {
     else {
         $apiArticlesUrl = "{0}/api/articles/" -f $remoteDomainCms
         $apiProjectsUrl = "{0}/api/projects/categories" -f $remoteDomainCms
+        $sitemapUrl = "{0}/sitemap.xml" -f $remoteDomainSite
         $cmsStaticUrls = @(
             "{0}/static/vendor/jodit/es2021/jodit.min.js" -f $remoteDomainCms,
             "{0}/static/vendor/jodit/es2021/jodit.min.css" -f $remoteDomainCms,
@@ -1103,6 +1154,7 @@ try {
 
         $articlesResponse = Ensure-Http200 -Url $apiArticlesUrl -Description "Smoke: API articles"
         $corsResponse = Ensure-Http200 -Url $apiProjectsUrl -Headers @{ Origin = "https://cultnova.ru" } -Description "Smoke: API CORS"
+        $sitemapResponse = Ensure-Http200 -Url $sitemapUrl -Description "Smoke: sitemap.xml"
         foreach ($cmsStaticUrl in $cmsStaticUrls) {
             Ensure-Http200 -Url $cmsStaticUrl -Description "Smoke: CMS static asset" | Out-Null
         }
@@ -1116,7 +1168,13 @@ try {
         }
         Write-Step "CORS header is valid."
 
+        if ($sitemapResponse.Content -notmatch [regex]::Escape("<loc>{0}/</loc>" -f $remoteDomainSite)) {
+            Fail ("Sitemap check failed. Home page entry is missing in {0}" -f $sitemapUrl)
+        }
+        Write-Step "Sitemap contains the home page."
+
         $firstSlug = $null
+        $firstProjectSlug = $null
         try {
             $articlesJson = $articlesResponse.Content | ConvertFrom-Json
             if ($articlesJson -and $articlesJson.data -and $articlesJson.data.Count -gt 0) {
@@ -1127,13 +1185,65 @@ try {
             Fail ("Failed to parse /api/articles/ JSON: {0}" -f $_.Exception.Message)
         }
 
+        try {
+            $categoriesJson = $corsResponse.Content | ConvertFrom-Json
+            foreach ($category in @($categoriesJson)) {
+                $categorySlug = [string]$category.slug
+                if ([string]::IsNullOrWhiteSpace($categorySlug)) {
+                    continue
+                }
+
+                $projectsByCategoryUrl = "{0}/api/projects/{1}" -f $remoteDomainCms, $categorySlug
+                $projectsResponse = Ensure-Http200 -Url $projectsByCategoryUrl -Description "Smoke: API projects by category"
+                $projectsJson = $projectsResponse.Content | ConvertFrom-Json
+                if ($projectsJson -and $projectsJson.data -and $projectsJson.data.Count -gt 0) {
+                    $firstProjectSlug = [string]$projectsJson.data[0].slug
+                    break
+                }
+            }
+        }
+        catch {
+            Fail ("Failed to parse projects API JSON: {0}" -f $_.Exception.Message)
+        }
+
         if ([string]::IsNullOrWhiteSpace($firstSlug)) {
             Write-Step "Smoke: article page check skipped (no published articles in API)."
         }
         else {
             $articleUrl = "{0}/articles/{1}/" -f $remoteDomainSite, $firstSlug
             Ensure-Http200 -Url $articleUrl -Description "Smoke: public article page" | Out-Null
+            if ($sitemapResponse.Content -notmatch [regex]::Escape("<loc>{0}</loc>" -f $articleUrl)) {
+                Fail ("Sitemap check failed. Article entry is missing: {0}" -f $articleUrl)
+            }
             Write-Step ("Public article page is available: {0}" -f $articleUrl)
+        }
+
+        if ([string]::IsNullOrWhiteSpace($firstProjectSlug)) {
+            Write-Step "Smoke: project page check skipped (no published projects in API)."
+        }
+        else {
+            $projectUrl = "{0}/projects/{1}/" -f $remoteDomainSite, $firstProjectSlug
+            $projectDetailApiUrl = "{0}/api/projects/detail/{1}/full" -f $remoteDomainCms, $firstProjectSlug
+            Ensure-Http200 -Url $projectUrl -Description "Smoke: public project page" | Out-Null
+            $projectDetailResponse = Ensure-Http200 -Url $projectDetailApiUrl -Description "Smoke: API project detail"
+            $projectRobots = ""
+            try {
+                $projectDetailJson = $projectDetailResponse.Content | ConvertFrom-Json
+                if ($null -ne $projectDetailJson.seo -and $null -ne $projectDetailJson.seo.robots) {
+                    $projectRobots = [string]$projectDetailJson.seo.robots
+                }
+            }
+            catch {
+                Fail ("Failed to parse project detail JSON for sitemap smoke-check: {0}" -f $_.Exception.Message)
+            }
+
+            if ($projectRobots.ToLowerInvariant().Contains("noindex")) {
+                Write-Step ("Smoke: sitemap check skipped for project {0} because seo_robots is {1}" -f $projectUrl, $projectRobots)
+            }
+            elseif ($sitemapResponse.Content -notmatch [regex]::Escape("<loc>{0}</loc>" -f $projectUrl)) {
+                Fail ("Sitemap check failed. Project entry is missing: {0}" -f $projectUrl)
+            }
+            Write-Step ("Public project page is available: {0}" -f $projectUrl)
         }
     }
 

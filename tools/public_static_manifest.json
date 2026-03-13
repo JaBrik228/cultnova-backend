@@ -13,13 +13,28 @@
     },
     {
       "kind": "file",
+      "source": "static/css/project.css",
+      "target": "css/project.css"
+    },
+    {
+      "kind": "file",
+      "source": "static/css/video-player.css",
+      "target": "css/video-player.css"
+    },
+    {
+      "kind": "file",
       "source": "static/js/article-slider.js",
       "target": "js/article-slider.js"
     },
     {
       "kind": "file",
-      "source": "static/site-icons/play_circle.svg",
-      "target": "site-icons/play_circle.svg"
+      "source": "static/js/video-player.js",
+      "target": "js/video-player.js"
+    },
+    {
+      "kind": "directory",
+      "source": "static/site-icons",
+      "target": "site-icons"
     }
   ]
 }
