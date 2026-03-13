@@ -1,0 +1,65 @@
+<div
+    class="{{ wrapper_class }} video-player"
+    data-video-shell
+    data-video-state="idle"
+>
+    <div
+        class="video-player__placeholder {{ placeholder_class }}"
+        data-video-placeholder
+    >
+        {% if poster %}
+        <img
+            class="video-player__poster {{ poster_class }}"
+            src="{{ poster }}"
+            alt=""
+            loading="lazy"
+            decoding="async"
+        />
+        {% else %}
+        <div
+            class="video-player__poster video-player__poster--fallback {{ poster_class }} {{ poster_fallback_class }}"
+        ></div>
+        {% endif %}
+        <button
+            type="button"
+            class="video-player__play {{ play_button_class }}"
+            data-video-play
+            aria-label="Запустить видео"
+        ></button>
+    </div>
+    <div
+        class="video-player__player-wrap {{ player_wrap_class }}"
+        data-video-player-wrap
+        aria-hidden="true"
+    >
+        <video
+            {% if video_id %}id="{{ video_id }}"{% endif %}
+            controls
+            preload="none"
+            width="100%"
+            height="100%"
+            class="video-player__native"
+            {% if poster %}poster="{{ poster }}"{% endif %}
+            data-lazy-video="1"
+            data-video-loaded="0"
+        >
+            {% for source in sources %}
+            <source data-src="{{ source.url }}" type="{{ source.type }}" />
+            {% endfor %}
+        </video>
+    </div>
+    <noscript>
+        <video
+            class="video-player__noscript {{ noscript_class }}"
+            controls
+            preload="metadata"
+            width="100%"
+            height="100%"
+            {% if poster %}poster="{{ poster }}"{% endif %}
+        >
+            {% for source in sources %}
+            <source src="{{ source.url }}" type="{{ source.type }}" />
+            {% endfor %}
+        </video>
+    </noscript>
+</div>

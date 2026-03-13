@@ -1,15 +1,29 @@
 import os
+from pathlib import Path
 
 from django.conf import settings
 from django.template.loader import render_to_string
 
 from blog.services.article_rendering import build_article_render_context
 from core.models.base_item import BaseContentItem
+from projects.services.project_rendering import build_project_render_context
+
+
+def get_generated_pages_root() -> Path:
+    generated_root = Path(settings.GENERATED_HTML_PAGES_PATH)
+    if not generated_root.is_absolute():
+        generated_root = Path(settings.BASE_DIR) / generated_root
+    return generated_root.resolve()
 
 
 def _build_article_path(base_gen_root: str, slug: str):
     article_dir = os.path.join(base_gen_root, "articles", str(slug))
     return article_dir, os.path.join(article_dir, "index.html")
+
+
+def _build_project_path(base_gen_root: str, slug: str):
+    project_dir = os.path.join(base_gen_root, "projects", str(slug))
+    return project_dir, os.path.join(project_dir, "index.html")
 
 
 def _remove_file_if_exists(file_path: str):
@@ -26,11 +40,14 @@ def build_item_detail_static_html(instance: BaseContentItem, template_name: str,
     """
     Generate static HTML and write it into the target directory.
     """
-    base_gen_root = settings.GENERATED_HTML_PAGES_PATH
+    base_gen_root = str(get_generated_pages_root())
 
     if folder_name in {"article", "articles"}:
         context = build_article_render_context(instance)
         save_dir, file_path = _build_article_path(base_gen_root, instance.slug)
+    elif folder_name in {"project", "projects"}:
+        context = build_project_render_context(instance)
+        save_dir, file_path = _build_project_path(base_gen_root, instance.slug)
     else:
         context = {"item": instance}
         save_dir = os.path.join(base_gen_root, folder_name)
@@ -47,7 +64,7 @@ def build_item_detail_static_html(instance: BaseContentItem, template_name: str,
 
 def delete_item_detail_static_html(instance: BaseContentItem, folder_name: str, slug_override: str | None = None):
     """Delete previously generated static HTML."""
-    base_gen_root = settings.GENERATED_HTML_PAGES_PATH
+    base_gen_root = str(get_generated_pages_root())
 
     if folder_name in {"article", "articles"}:
         active_slug = slug_override or instance.slug
@@ -65,6 +82,22 @@ def delete_item_detail_static_html(instance: BaseContentItem, folder_name: str, 
         _remove_dir_if_empty(legacy_id_dir)
         _remove_dir_if_empty(os.path.join(base_gen_root, "article"))
         _remove_dir_if_empty(os.path.join(base_gen_root, "articles"))
+    elif folder_name in {"project", "projects"}:
+        active_slug = slug_override or instance.slug
+        project_dir, file_path = _build_project_path(base_gen_root, active_slug)
+
+        legacy_slug_file = os.path.join(base_gen_root, "projects", f"{active_slug}.html")
+        legacy_id_dir = os.path.join(base_gen_root, "project", str(instance.id))
+        legacy_id_file = os.path.join(legacy_id_dir, "index.html")
+
+        _remove_file_if_exists(file_path)
+        _remove_file_if_exists(legacy_slug_file)
+        _remove_file_if_exists(legacy_id_file)
+
+        _remove_dir_if_empty(project_dir)
+        _remove_dir_if_empty(legacy_id_dir)
+        _remove_dir_if_empty(os.path.join(base_gen_root, "project"))
+        _remove_dir_if_empty(os.path.join(base_gen_root, "projects"))
     else:
         file_path = os.path.join(base_gen_root, folder_name, f"{instance.slug}.html")
         _remove_file_if_exists(file_path)

@@ -147,7 +147,11 @@ def validate_lead_block_structure(value: str) -> None:
             raise ValueError("Lead paragraph must be the first content block in article body.")
 
 
-def sanitize_article_body_html(value: str) -> str:
+def contains_h1_tag(value: str) -> bool:
+    return bool(value and H1_RE.search(value))
+
+
+def sanitize_rich_body_html(value: str) -> str:
     raw_value = (value or "").strip()
     if not raw_value:
         return ""
@@ -167,6 +171,10 @@ def sanitize_article_body_html(value: str) -> str:
     )
 
     return cleaned.strip()
+
+
+def sanitize_article_body_html(value: str) -> str:
+    return sanitize_rich_body_html(value)
 
 
 def build_inline_image_html(url: str, alt: str, caption: str = "") -> str:

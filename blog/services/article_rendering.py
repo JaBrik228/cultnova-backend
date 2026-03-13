@@ -1,4 +1,5 @@
 import json
+from urllib.parse import quote
 
 from django.conf import settings
 from django.utils import timezone
@@ -17,6 +18,23 @@ def build_public_article_url(slug: str) -> str:
     if base:
         return f"{base}{path}"
     return path
+
+
+def build_share_links(url: str, title: str):
+    encoded_url = quote(url or "", safe="")
+    encoded_title = quote(title or "", safe="")
+    return [
+        {
+            "platform": "whatsapp",
+            "url": f"https://wa.me/?text={encoded_title}%20{encoded_url}".strip(),
+            "aria_label": "Поделиться в WhatsApp",
+        },
+        {
+            "platform": "telegram",
+            "url": f"https://t.me/share/url?url={encoded_url}&text={encoded_title}",
+            "aria_label": "Поделиться в Telegram",
+        },
+    ]
 
 
 def _normalize_text(value: str) -> str:
@@ -134,6 +152,7 @@ def build_article_render_context(article):
     article.published_at_display = _format_article_date_ru(article.created_at)
     article.published_at_iso = article.created_at.isoformat()
     article.updated_at_iso = article.updated_at.isoformat() if article.updated_at else article.created_at.isoformat()
+    article.share_links = build_share_links(article_url, seo_title)
 
     article.seo = {
         "title": seo_title,

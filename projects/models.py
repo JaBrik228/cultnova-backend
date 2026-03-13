@@ -1,5 +1,6 @@
-from django.db import models
-from core.models.base_item import BaseContentItem, BaseContentBlock
+﻿from django.db import models
+
+from core.models.base_item import BaseContentBlock, BaseContentItem
 
 
 class ProjectCategories(models.Model):
@@ -8,9 +9,9 @@ class ProjectCategories(models.Model):
     created_at = models.DateTimeField(auto_now_add=True, verbose_name="Дата создания")
 
     class Meta:
-        verbose_name = "Категория проктов"
-        verbose_name_plural = "Категории проктов"
-        ordering = ('-created_at',)
+        verbose_name = "Категория проектов"
+        verbose_name_plural = "Категории проектов"
+        ordering = ("-created_at",)
 
     def __str__(self):
         return self.title
@@ -21,54 +22,66 @@ class Projects(BaseContentItem):
     slug = models.SlugField(unique=True, verbose_name="Слаг")
     category = models.ForeignKey(
         ProjectCategories,
-        related_name='projects',
+        related_name="projects",
         on_delete=models.CASCADE,
-        verbose_name="Категория"
+        verbose_name="Категория",
     )
     customer_name = models.CharField(max_length=300, verbose_name="Заказчик")
     year = models.PositiveIntegerField(verbose_name="Год")
     type = models.CharField(max_length=300, verbose_name="Тип проекта")
+    body_html = models.TextField(blank=True, default="", verbose_name="Body HTML")
+    excerpt = models.TextField(blank=True, default="", verbose_name="Excerpt")
     created_at = models.DateTimeField(auto_now_add=True, verbose_name="Дата создания")
+    updated_at = models.DateTimeField(auto_now=True, verbose_name="Updated at")
     preview_image = models.URLField(max_length=1024, blank=True, null=True)
+    preview_image_alt = models.CharField(max_length=255, blank=True, default="", verbose_name="Preview image alt")
+
+    seo_title = models.CharField(max_length=255, default="", verbose_name="SEO title")
+    seo_description = models.CharField(max_length=320, default="", verbose_name="SEO description")
+    seo_keywords = models.CharField(max_length=500, blank=True, default="", verbose_name="SEO keywords")
+    seo_robots = models.CharField(max_length=32, default="index,follow", verbose_name="SEO robots")
+    canonical_url = models.URLField(max_length=1024, blank=True, default="", verbose_name="Canonical URL")
 
     class Meta:
         verbose_name = "Проект"
         verbose_name_plural = "Проекты"
-        ordering = ('-created_at',)
+        ordering = ("-created_at",)
 
     def __str__(self):
         return self.title
 
 
 class ProjectsContentBlock(BaseContentBlock):
-    TEXT = 'text'
-    HEADING = 'heading'
-    IMAGE = 'image'
-    VIDEO = 'video'
+    TEXT = "text"
+    HEADING = "heading"
+    IMAGE = "image"
+    VIDEO = "video"
 
     CONTENT_TYPE_CHOICES = [
-        (TEXT, 'Текст'),
-        (HEADING, 'Заголовок'),
-        (IMAGE, 'Изображение'),
+        (TEXT, "Текст"),
+        (HEADING, "Заголовок"),
+        (IMAGE, "Изображение"),
         (VIDEO, "Видео"),
     ]
 
     project = models.ForeignKey(
         Projects,
-        related_name='blocks',
+        related_name="blocks",
         on_delete=models.CASCADE,
-        verbose_name="Проект"
+        verbose_name="Проект",
     )
     type = models.CharField(max_length=20, choices=CONTENT_TYPE_CHOICES, verbose_name="Тип")
     order = models.PositiveIntegerField(verbose_name="Место")
     text = models.TextField(null=True, blank=True, verbose_name="Текст")
     media = models.URLField(max_length=1024, blank=True, null=True, verbose_name="Медиа")
+    media_alt = models.CharField(max_length=255, blank=True, default="", verbose_name="Media alt")
+    caption = models.CharField(max_length=255, blank=True, default="", verbose_name="Caption")
     first_video_frame = models.URLField(max_length=1024, blank=True, null=True, verbose_name="Первый кадр видео")
 
     class Meta:
         verbose_name = "Блок"
         verbose_name_plural = "Блоки"
-        ordering = ('order',)
+        ordering = ("order",)
 
     def __str__(self):
-        return self.text
+        return f"{self.type} ({self.order})"
