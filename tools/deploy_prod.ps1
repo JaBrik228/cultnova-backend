@@ -1143,6 +1143,7 @@ try {
     else {
         $apiArticlesUrl = "{0}/api/articles/" -f $remoteDomainCms
         $apiProjectsUrl = "{0}/api/projects/categories" -f $remoteDomainCms
+        $sitemapPageUrl = "{0}/sitemap/" -f $remoteDomainSite
         $sitemapUrl = "{0}/sitemap.xml" -f $remoteDomainSite
         $cmsStaticUrls = @(
             "{0}/static/vendor/jodit/es2021/jodit.min.js" -f $remoteDomainCms,
@@ -1154,6 +1155,7 @@ try {
 
         $articlesResponse = Ensure-Http200 -Url $apiArticlesUrl -Description "Smoke: API articles"
         $corsResponse = Ensure-Http200 -Url $apiProjectsUrl -Headers @{ Origin = "https://cultnova.ru" } -Description "Smoke: API CORS"
+        $sitemapPageResponse = Ensure-Http200 -Url $sitemapPageUrl -Description "Smoke: sitemap page"
         $sitemapResponse = Ensure-Http200 -Url $sitemapUrl -Description "Smoke: sitemap.xml"
         foreach ($cmsStaticUrl in $cmsStaticUrls) {
             Ensure-Http200 -Url $cmsStaticUrl -Description "Smoke: CMS static asset" | Out-Null
@@ -1172,6 +1174,14 @@ try {
             Fail ("Sitemap check failed. Home page entry is missing in {0}" -f $sitemapUrl)
         }
         Write-Step "Sitemap contains the home page."
+
+        if (
+            $sitemapPageResponse.Content -notmatch [regex]::Escape("Карта сайта") -or
+            $sitemapPageResponse.Content -notmatch [regex]::Escape("ГЛАВНАЯ СТРАНИЦА")
+        ) {
+            Fail ("Sitemap page check failed. Expected markers are missing in {0}" -f $sitemapPageUrl)
+        }
+        Write-Step "Sitemap page HTML markers are valid."
 
         $firstSlug = $null
         $firstProjectSlug = $null

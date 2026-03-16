@@ -1,0 +1,258 @@
+<!doctype html>
+<html lang="ru">
+    <head>
+        <meta charset="UTF-8" />
+        <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+        <meta name="robots" content="index,follow" />
+
+        <title>Карта сайта | Cultnova</title>
+        <meta
+            name="description"
+            content="Карта сайта для посетителей компании Cultnova."
+        />
+
+        <link
+            rel="icon"
+            href="https://cultnova-media.hb.ru-msk.vkcloud-storage.ru/site-icons/favicon.svg"
+            type="image/svg+xml"
+        />
+        <link rel="canonical" href="{{ canonical_url }}" />
+
+        <script type="text/javascript">
+            (function (m, e, t, r, i, k, a) {
+                m[i] =
+                    m[i] ||
+                    function () {
+                        (m[i].a = m[i].a || []).push(arguments);
+                    };
+                m[i].l = 1 * new Date();
+                for (var j = 0; j < document.scripts.length; j++) {
+                    if (document.scripts[j].src === r) {
+                        return;
+                    }
+                }
+                ((k = e.createElement(t)),
+                    (a = e.getElementsByTagName(t)[0]),
+                    (k.async = 1),
+                    (k.src = r),
+                    a.parentNode.insertBefore(k, a));
+            })(
+                window,
+                document,
+                "script",
+                "https://mc.yandex.ru/metrika/tag.js",
+                "ym",
+            );
+
+            ym(105343751, "init", {
+                clickmap: true,
+                trackLinks: true,
+                accurateTrackBounce: true,
+            });
+        </script>
+        <noscript
+            ><div>
+                <img
+                    src="https://mc.yandex.ru/watch/105343751"
+                    style="position: absolute; left: -9999px"
+                    alt="yandex"
+                /></div
+        ></noscript>
+
+        <link rel="stylesheet" href="/css/general.css" />
+        <link rel="stylesheet" href="/css/loader.css" />
+        <link
+            rel="stylesheet"
+            href="/competence/css/style.css"
+            media="print"
+            onload="this.media = 'all'"
+        />
+        <link rel="stylesheet" href="/css/blog.css" />
+        <link rel="stylesheet" href="/css/project.css?v=2026-03-10-4" />
+        <style>
+            .sitemap {
+                margin: 100px 0;
+            }
+
+            .sitemap__link {
+                color: var(--secondary-color);
+                text-decoration: none;
+            }
+
+            .sitemap__item {
+                list-style: inside;
+                margin: 10px 0;
+            }
+
+            .sitemap__section + .sitemap__section {
+                margin-top: 56px;
+            }
+        </style>
+    </head>
+    <body data-page="sitemap">
+        <div class="loader-wrap">
+            <span class="loader"></span>
+        </div>
+
+        {% include "partials/header.html" %}
+        {% include "partials/mobile_menu.html" %}
+
+        <nav
+            class="breadcrumbs"
+            itemscope
+            itemtype="https://schema.org/BreadcrumbList"
+        >
+            <ul class="breadcrumb-list">
+                <li
+                    class="breadcrumb-item"
+                    itemprop="itemListElement"
+                    itemscope
+                    itemtype="https://schema.org/ListItem"
+                >
+                    <a href="/" itemprop="item">
+                        <span itemprop="name" style="color: #757575">Главная</span>
+                    </a>
+                    <meta itemprop="position" content="1" />
+                </li>
+                <span>
+                    <svg
+                        width="5"
+                        height="8"
+                        viewBox="0 0 5 8"
+                        fill="none"
+                        xmlns="http://www.w3.org/2000/svg"
+                    >
+                        <path
+                            d="M3.06667 4L0 0.933333L0.933333 0L4.93333 4L0.933333 8L0 7.06667L3.06667 4Z"
+                            fill="#757575"
+                        />
+                    </svg>
+                </span>
+                <li
+                    class="breadcrumb-item"
+                    itemprop="itemListElement"
+                    itemscope
+                    itemtype="https://schema.org/ListItem"
+                >
+                    <a href="/sitemap/" itemprop="item">
+                        <span itemprop="name">Карта сайта</span>
+                    </a>
+                    <meta itemprop="position" content="2" />
+                </li>
+            </ul>
+        </nav>
+
+        <div class="container">
+            <section class="sitemap">
+                <h1 class="title">Карта сайта</h1>
+                <br /><br />
+                {% for section in sections %}
+                <div class="sitemap__section">
+                    <h2 class="sitemap__section-title">{{ section.title }}</h2>
+                    <ul class="sitemap__list">
+                        {% for link in section.links %}
+                        <li class="sitemap__item">
+                            <a href="{{ link.path }}" class="sitemap__link">
+                                {{ link.title }}
+                            </a>
+                        </li>
+                        {% endfor %}
+                    </ul>
+                </div>
+                {% endfor %}
+            </section>
+        </div>
+
+        <div class="background-black">{% include "partials/footer.html" %}</div>
+
+        {% include "partials/callback_popup.html" %}
+        {% include "partials/popup.html" %}
+
+        <button class="scroll-to-top" id="scrollToTop" aria-label="Наверх">
+            <svg
+                width="80"
+                height="80"
+                viewBox="0 0 80 80"
+                fill="none"
+                xmlns="http://www.w3.org/2000/svg"
+            >
+                <g filter="url(#filter0_d_276_3781)">
+                    <path
+                        d="M8 38C8 20.3269 22.3269 6 40 6C57.6731 6 72 20.3269 72 38C72 55.6731 57.6731 70 40 70C22.3269 70 8 55.6731 8 38Z"
+                        fill="white"
+                        shape-rendering="crispEdges"
+                    />
+                    <mask
+                        id="mask0_276_3781"
+                        style="mask-type: alpha"
+                        maskUnits="userSpaceOnUse"
+                        x="24"
+                        y="22"
+                        width="32"
+                        height="32"
+                    >
+                        <rect
+                            x="24"
+                            y="22"
+                            width="32"
+                            height="32"
+                            fill="#D9D9D9"
+                        />
+                    </mask>
+                    <g mask="url(#mask0_276_3781)">
+                        <path
+                            d="M38.6666 48.6673V32.434L31.1999 39.9007L29.3333 38.0007L39.9999 27.334L50.6666 38.0007L48.7999 39.9007L41.3333 32.434V48.6673H38.6666Z"
+                            fill="#475EEA"
+                        />
+                    </g>
+                </g>
+                <defs>
+                    <filter
+                        id="filter0_d_276_3781"
+                        x="0"
+                        y="0"
+                        width="80"
+                        height="80"
+                        filterUnits="userSpaceOnUse"
+                        color-interpolation-filters="sRGB"
+                    >
+                        <feFlood
+                            flood-opacity="0"
+                            result="BackgroundImageFix"
+                        />
+                        <feColorMatrix
+                            in="SourceAlpha"
+                            type="matrix"
+                            values="0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 127 0"
+                            result="hardAlpha"
+                        />
+                        <feOffset dy="2" />
+                        <feGaussianBlur stdDeviation="4" />
+                        <feComposite in2="hardAlpha" operator="out" />
+                        <feColorMatrix
+                            type="matrix"
+                            values="0 0 0 0 0.133333 0 0 0 0 0.133333 0 0 0 0 0.133333 0 0 0 1 0"
+                        />
+                        <feBlend
+                            mode="normal"
+                            in2="BackgroundImageFix"
+                            result="effect1_dropShadow_276_3781"
+                        />
+                        <feBlend
+                            mode="normal"
+                            in="SourceGraphic"
+                            in2="effect1_dropShadow_276_3781"
+                            result="shape"
+                        />
+                    </filter>
+                </defs>
+            </svg>
+        </button>
+
+        <script src="/js/cursor.js"></script>
+        <script src="/js/script.js"></script>
+        <script src="/js/popup.js"></script>
+        <script src="/js/form-submit.js"></script>
+        <script src="/js/cookie-consent.js" defer></script>
+    </body>
+</html>
