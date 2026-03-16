@@ -1176,8 +1176,8 @@ try {
         Write-Step "Sitemap contains the home page."
 
         if (
-            $sitemapPageResponse.Content -notmatch [regex]::Escape("Карта сайта") -or
-            $sitemapPageResponse.Content -notmatch [regex]::Escape("ГЛАВНАЯ СТРАНИЦА")
+            $sitemapPageResponse.Content -notmatch [regex]::Escape('data-page="sitemap"') -or
+            $sitemapPageResponse.Content -notmatch [regex]::Escape('class="sitemap__section"')
         ) {
             Fail ("Sitemap page check failed. Expected markers are missing in {0}" -f $sitemapPageUrl)
         }
