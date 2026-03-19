@@ -1,6 +1,6 @@
 ﻿import tempfile
 from pathlib import Path
-from datetime import timedelta
+from datetime import datetime, timedelta
 from unittest.mock import patch
 
 from django.contrib.auth import get_user_model
@@ -190,12 +190,96 @@ class ProjectApiTests(TestCase):
             caption="Caption",
         )
 
+    def test_all_projects_endpoint_excludes_unpublished_and_noindex_projects(self):
+        Projects.objects.create(
+            title="SEO Closed",
+            slug="seo-closed-project",
+            category=self.category,
+            customer_name="Client",
+            year=2025,
+            type="Type",
+            body_html="<p>Body</p>",
+            seo_title="SEO",
+            seo_description="SEO",
+            seo_robots="noindex,follow",
+            is_published=True,
+        )
+
+        response = self.client.get(reverse("projects:get_all_projects"))
+
+        self.assertEqual(response.status_code, 200)
+        payload = response.json()
+        self.assertEqual(payload["current_page"], 1)
+        self.assertFalse(payload["has_next"])
+        self.assertFalse(payload["has_previous"])
+        self.assertIsNone(payload["next_page"])
+        self.assertEqual(len(payload["data"]), 1)
+
+        item = payload["data"][0]
+        self.assertEqual(item["slug"], self.project.slug)
+        self.assertEqual(item["category_title"], self.category.title)
+        self.assertEqual(item["preview"], "https://example.com/preview.jpg")
+        self.assertNotIn(self.hidden_project.slug, [entry["slug"] for entry in payload["data"]])
+        self.assertNotIn("seo-closed-project", [entry["slug"] for entry in payload["data"]])
+
+    def test_all_projects_endpoint_paginates_with_current_page(self):
+        second_visible = Projects.objects.create(
+            title="Second Visible",
+            slug="second-visible-project",
+            category=self.category,
+            customer_name="Client",
+            year=2025,
+            type="Type",
+            body_html="<p>Body</p>",
+            seo_title="SEO",
+            seo_description="SEO",
+            is_published=True,
+        )
+        third_visible = Projects.objects.create(
+            title="Third Visible",
+            slug="third-visible-project",
+            category=self.category,
+            customer_name="Client",
+            year=2025,
+            type="Type",
+            body_html="<p>Body</p>",
+            seo_title="SEO",
+            seo_description="SEO",
+            is_published=True,
+        )
+        now = timezone.now()
+        Projects.objects.filter(pk=self.project.pk).update(created_at=now - timedelta(minutes=3))
+        Projects.objects.filter(pk=second_visible.pk).update(created_at=now - timedelta(minutes=2))
+        Projects.objects.filter(pk=third_visible.pk).update(created_at=now - timedelta(minutes=1))
+
+        response_page_1 = self.client.get(reverse("projects:get_all_projects"), {"limit": 2, "page": 1})
+
+        self.assertEqual(response_page_1.status_code, 200)
+        payload_page_1 = response_page_1.json()
+        self.assertEqual(payload_page_1["current_page"], 1)
+        self.assertTrue(payload_page_1["has_next"])
+        self.assertEqual(payload_page_1["next_page"], 2)
+        self.assertEqual(len(payload_page_1["data"]), 2)
+        self.assertEqual({entry["slug"] for entry in payload_page_1["data"]}, {second_visible.slug, third_visible.slug})
+
+        response_page_2 = self.client.get(reverse("projects:get_all_projects"), {"limit": 2, "page": 2})
+
+        self.assertEqual(response_page_2.status_code, 200)
+        payload_page_2 = response_page_2.json()
+        self.assertEqual(payload_page_2["current_page"], 2)
+        self.assertTrue(payload_page_2["has_previous"])
+        self.assertFalse(payload_page_2["has_next"])
+        self.assertIsNone(payload_page_2["next_page"])
+        self.assertEqual(len(payload_page_2["data"]), 1)
+        self.assertEqual(payload_page_2["data"][0]["slug"], self.project.slug)
+
     def test_projects_by_category_filters_unpublished_and_returns_string_preview(self):
         response = self.client.get(f"/api/projects/{self.category.slug}")
 
         self.assertEqual(response.status_code, 200)
         payload = response.json()
         self.assertEqual(len(payload["data"]), 1)
+        self.assertEqual(payload["page"], 1)
         self.assertEqual(payload["data"][0]["slug"], self.project.slug)
         self.assertEqual(payload["data"][0]["preview"], "https://example.com/preview.jpg")
 

@@ -6,12 +6,15 @@ from io import StringIO
 from pathlib import Path
 
 from django.core.management import call_command
-from django.test import TestCase, override_settings
-from django.urls import reverse
+from django.test import SimpleTestCase, TestCase, override_settings
 from django.utils import timezone
 
 from blog.models import Articles
-from core.services.html_sitemap import SitemapXmlMissingError, build_html_sitemap
+from core.services.html_sitemap import (
+    SitemapXmlMissingError,
+    build_html_sitemap,
+    build_static_html_sitemap_page,
+)
 from core.services.sitemap import build_sitemap
 from projects.models import ProjectCategories, Projects
 
@@ -105,32 +108,35 @@ class SitemapServiceTests(TestCase):
                 self.assertIn(project_updated_at.isoformat(timespec="seconds"), sitemap)
 
     @override_settings(SITE_PUBLIC_BASE_URL="https://example.com")
-    def test_rebuild_sitemap_command_reports_output_and_counts(self):
+    def test_rebuild_sitemap_command_reports_xml_and_html_outputs(self):
         with tempfile.TemporaryDirectory() as temp_dir:
             with override_settings(GENERATED_HTML_PAGES_PATH=temp_dir):
                 root = Path(temp_dir)
                 self._write_html(
                     root / "index.html",
-                    '<html><head><meta name="robots" content="index,follow"></head><body>Home</body></html>',
+                    '<html><head><meta name="robots" content="index,follow"></head><title>Главная</title><body>Home</body></html>',
                 )
 
                 stdout = StringIO()
                 call_command("rebuild_sitemap", stdout=stdout)
                 output = stdout.getvalue()
 
-                self.assertIn("Output:", output)
+                self.assertIn("XML:", output)
+                self.assertIn("HTML:", output)
                 self.assertIn("URLs: 1", output)
+                self.assertIn("sections: 1", output)
                 self.assertIn("skipped noindex: 0", output)
                 self.assertTrue((root / "sitemap.xml").exists())
+                self.assertTrue((root / "sitemap" / "index.html").exists())
 
     def _write_html(self, target_path: Path, content: str):
         target_path.parent.mkdir(parents=True, exist_ok=True)
         target_path.write_text(content, encoding="utf-8")
 
 
-class HtmlSitemapServiceTests(TestCase):
+class HtmlSitemapServiceTests(SimpleTestCase):
     @override_settings(SITE_PUBLIC_BASE_URL="https://example.com")
-    def test_build_html_sitemap_reads_titles_and_groups_new_and_legacy_paths(self):
+    def test_build_html_sitemap_groups_detail_pages_and_skips_noindex(self):
         with tempfile.TemporaryDirectory() as temp_dir:
             with override_settings(GENERATED_HTML_PAGES_PATH=temp_dir):
                 root = Path(temp_dir)
@@ -138,47 +144,78 @@ class HtmlSitemapServiceTests(TestCase):
                     root / "sitemap.xml",
                     [
                         "https://example.com/",
+                        "https://example.com/blog/",
+                        "https://example.com/articles/live-article/",
+                        "https://example.com/projects/",
+                        "https://example.com/projects/live-project/",
                         "https://example.com/create/museum-spaces/",
                         "https://example.com/museum/",
                         "https://example.com/info/about-company/",
                         "https://example.com/about/",
                         "https://example.com/legal/privacy-policy/",
                         "https://example.com/privacy-policy/",
-                        "https://example.com/projects/live-project/",
-                        "https://example.com/articles/live-article/",
-                        "https://example.com/misc-page/",
+                        "https://example.com/noindex-page/",
                         "https://example.com/sitemap/",
                     ],
                 )
-                self._write_titled_page(root / "index.html", "Любой title | Cultnova")
-                self._write_titled_page(root / "create" / "museum-spaces" / "index.html", "Создание музеев | Cultnova")
-                self._write_titled_page(root / "museum" / "index.html", "Музеи и пространства | Cultnova")
-                self._write_titled_page(root / "info" / "about-company" / "index.html", "О компании | Cultnova")
-                self._write_titled_page(root / "about" / "index.html", "О компании старая | Cultnova")
-                self._write_titled_page(root / "legal" / "privacy-policy" / "index.html", "Политика конфиденциальности")
-                self._write_titled_page(root / "privacy-policy" / "index.html", "Старая политика | Cultnova")
-                self._write_titled_page(root / "projects" / "live-project" / "index.html", "Проект Alpha | Cultnova")
-                self._write_titled_page(root / "articles" / "live-article" / "index.html", "Статья Beta | Cultnova")
-                self._write_html(root / "misc-page" / "index.html", "<html><head></head><body>Misc</body></html>")
+                self._write_titled_page(
+                    root / "index.html",
+                    "Любой title | Cultnova",
+                    robots="index,follow",
+                )
+                self._write_titled_page(root / "blog" / "index.html", "Блог | Cultnova", robots="index,follow")
+                self._write_titled_page(
+                    root / "articles" / "live-article" / "index.html",
+                    "Статья Beta | Cultnova",
+                    robots="index,follow",
+                )
+                self._write_titled_page(root / "projects" / "index.html", "Проекты | Cultnova", robots="index,follow")
+                self._write_titled_page(
+                    root / "projects" / "live-project" / "index.html",
+                    "Проект Alpha | Cultnova",
+                    robots="index,follow",
+                )
+                self._write_titled_page(
+                    root / "create" / "museum-spaces" / "index.html",
+                    "Создание музеев | Cultnova",
+                    robots="index,follow",
+                )
+                self._write_titled_page(root / "museum" / "index.html", "Музеи и пространства | Cultnova", robots="index,follow")
+                self._write_titled_page(root / "info" / "about-company" / "index.html", "О компании | Cultnova", robots="index,follow")
+                self._write_titled_page(root / "about" / "index.html", "О компании старая | Cultnova", robots="index,follow")
+                self._write_titled_page(
+                    root / "legal" / "privacy-policy" / "index.html",
+                    "Политика конфиденциальности",
+                    robots="index,follow",
+                )
+                self._write_titled_page(
+                    root / "privacy-policy" / "index.html",
+                    "Старая политика | Cultnova",
+                    robots="index,follow",
+                )
+                self._write_titled_page(
+                    root / "noindex-page" / "index.html",
+                    "Скрытая страница | Cultnova",
+                    robots="noindex, nofollow",
+                )
 
                 sections = build_html_sitemap()
-
                 section_map = {section.key: section for section in sections}
-                self.assertEqual(section_map["create"].title, "Мы создаём")
+
+                self.assertEqual([link.path for link in section_map["main"].links], ["/", "/blog/", "/projects/"])
+                self.assertEqual(section_map["main"].links[0].title, "ГЛАВНАЯ СТРАНИЦА")
+                self.assertEqual([link.title for link in section_map["articles"].links], ["Статья Beta"])
+                self.assertEqual([link.title for link in section_map["projects"].links], ["Проект Alpha"])
                 self.assertEqual(
                     [link.title for link in section_map["create"].links],
-                    ["Музеи и пространства", "Создание музеев"],
+                    ["Создание музеев", "Музеи и пространства"],
                 )
                 self.assertEqual([link.path for link in section_map["info"].links], ["/info/about-company/", "/about/"])
                 self.assertEqual([link.path for link in section_map["legal"].links], ["/legal/privacy-policy/", "/privacy-policy/"])
-                self.assertEqual([link.title for link in section_map["projects"].links], ["Проект Alpha"])
-                self.assertEqual([link.title for link in section_map["blog"].links], ["Статья Beta"])
-                self.assertEqual([link.path for link in section_map["main"].links], ["/", "/misc-page/"])
-                self.assertEqual(section_map["main"].links[0].title, "ГЛАВНАЯ СТРАНИЦА")
-                self.assertEqual(section_map["main"].links[1].title, "misc-page")
 
                 all_paths = [link.path for section in sections for link in section.links]
                 self.assertNotIn("/sitemap/", all_paths)
+                self.assertNotIn("/noindex-page/", all_paths)
 
     @override_settings(SITE_PUBLIC_BASE_URL="https://example.com")
     def test_build_html_sitemap_raises_when_xml_missing(self):
@@ -197,28 +234,8 @@ class HtmlSitemapServiceTests(TestCase):
                 with self.assertRaises(ET.ParseError):
                     build_html_sitemap()
 
-    def _write_sitemap_xml(self, target_path: Path, locations: list[str]):
-        target_path.parent.mkdir(parents=True, exist_ok=True)
-        lines = [
-            '<?xml version="1.0" encoding="UTF-8"?>',
-            '<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">',
-        ]
-        for loc in locations:
-            lines.extend(["  <url>", f"    <loc>{loc}</loc>", "  </url>"])
-        lines.append("</urlset>")
-        target_path.write_text("\n".join(lines), encoding="utf-8")
-
-    def _write_titled_page(self, target_path: Path, title: str):
-        self._write_html(target_path, f"<html><head><title>{title}</title></head><body>Page</body></html>")
-
-    def _write_html(self, target_path: Path, content: str):
-        target_path.parent.mkdir(parents=True, exist_ok=True)
-        target_path.write_text(content, encoding="utf-8")
-
-
-class SitemapPageViewTests(TestCase):
     @override_settings(SITE_PUBLIC_BASE_URL="https://example.com")
-    def test_sitemap_page_renders_sections_from_sitemap_xml(self):
+    def test_build_static_html_sitemap_page_writes_public_file(self):
         with tempfile.TemporaryDirectory() as temp_dir:
             with override_settings(GENERATED_HTML_PAGES_PATH=temp_dir):
                 root = Path(temp_dir)
@@ -226,41 +243,28 @@ class SitemapPageViewTests(TestCase):
                     root / "sitemap.xml",
                     [
                         "https://example.com/",
-                        "https://example.com/create/museum-spaces/",
-                        "https://example.com/projects/live-project/",
-                        "https://example.com/sitemap/",
+                        "https://example.com/articles/live-article/",
                     ],
                 )
-                self._write_titled_page(root / "index.html", "Любой title | Cultnova")
-                self._write_titled_page(root / "create" / "museum-spaces" / "index.html", "Создание музеев | Cultnova")
-                self._write_titled_page(root / "projects" / "live-project" / "index.html", "Проект Alpha | Cultnova")
+                self._write_titled_page(root / "index.html", "Главная | Cultnova", robots="index,follow")
+                self._write_titled_page(
+                    root / "articles" / "live-article" / "index.html",
+                    "Статья Beta | Cultnova",
+                    robots="index,follow",
+                )
 
-                response = self.client.get(reverse("core:sitemap_page"))
+                result = build_static_html_sitemap_page()
 
-                self.assertEqual(response.status_code, 200)
-                self.assertContains(response, "Карта сайта")
-                self.assertContains(response, "ГЛАВНАЯ СТРАНИЦА")
-                self.assertContains(response, "Мы создаём")
-                self.assertContains(response, "Создание музеев")
-                self.assertContains(response, "Проект Alpha")
-                self.assertNotContains(response, 'href="/sitemap/" class="sitemap__link"')
+                self.assertEqual(result.output_path, root / "sitemap" / "index.html")
+                self.assertEqual(result.section_count, 2)
+                self.assertEqual(result.url_count, 2)
 
-    @override_settings(SITE_PUBLIC_BASE_URL="https://example.com")
-    def test_sitemap_page_returns_404_when_sitemap_xml_missing(self):
-        with tempfile.TemporaryDirectory() as temp_dir:
-            with override_settings(GENERATED_HTML_PAGES_PATH=temp_dir):
-                response = self.client.get(reverse("core:sitemap_page"))
-                self.assertEqual(response.status_code, 404)
-
-    @override_settings(SITE_PUBLIC_BASE_URL="https://example.com")
-    def test_sitemap_page_returns_500_for_invalid_xml(self):
-        with tempfile.TemporaryDirectory() as temp_dir:
-            with override_settings(GENERATED_HTML_PAGES_PATH=temp_dir):
-                root = Path(temp_dir)
-                (root / "sitemap.xml").write_text("<urlset>", encoding="utf-8")
-
-                response = self.client.get(reverse("core:sitemap_page"))
-                self.assertEqual(response.status_code, 500)
+                html = result.output_path.read_text(encoding="utf-8")
+                self.assertIn('data-page="sitemap"', html)
+                self.assertIn("ГЛАВНАЯ СТРАНИЦА", html)
+                self.assertIn("Статьи", html)
+                self.assertIn("/articles/live-article/", html)
+                self.assertIn("https://example.com/sitemap/", html)
 
     def _write_sitemap_xml(self, target_path: Path, locations: list[str]):
         target_path.parent.mkdir(parents=True, exist_ok=True)
@@ -273,9 +277,17 @@ class SitemapPageViewTests(TestCase):
         lines.append("</urlset>")
         target_path.write_text("\n".join(lines), encoding="utf-8")
 
-    def _write_titled_page(self, target_path: Path, title: str):
-        target_path.parent.mkdir(parents=True, exist_ok=True)
-        target_path.write_text(
-            f"<html><head><title>{title}</title></head><body>Page</body></html>",
-            encoding="utf-8",
+    def _write_titled_page(self, target_path: Path, title: str, robots: str):
+        self._write_html(
+            target_path,
+            (
+                "<html><head>"
+                f'<meta name="robots" content="{robots}">'
+                f"<title>{title}</title>"
+                "</head><body>Page</body></html>"
+            ),
         )
+
+    def _write_html(self, target_path: Path, content: str):
+        target_path.parent.mkdir(parents=True, exist_ok=True)
+        target_path.write_text(content, encoding="utf-8")

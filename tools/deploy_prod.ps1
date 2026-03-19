@@ -1118,18 +1118,20 @@ try {
     Invoke-Remote -Command $rebuildProjectsCmd -Description "Deploy: rebuilding project pages"
 
     $rebuildSitemapCmd = 'set -e; app_root="{0}"; venv_py="{1}"; "$venv_py" "$app_root/manage.py" rebuild_sitemap' -f $remoteAppRoot, $remoteVenvPy
-    Invoke-Remote -Command $rebuildSitemapCmd -Description "Deploy: rebuilding sitemap.xml"
+    Invoke-Remote -Command $rebuildSitemapCmd -Description "Deploy: rebuilding sitemap.xml and sitemap page"
 
     if ($generatedPagesRoot -ne $remoteSiteRoot) {
-        $copySitemapCmd = 'set -e; generated_root="{0}"; site_root="{1}"; test -f "$generated_root/sitemap.xml"; mkdir -p "$site_root"; cp "$generated_root/sitemap.xml" "$site_root/sitemap.xml"; chmod 644 "$site_root/sitemap.xml"' -f $generatedPagesRoot, $remoteSiteRoot
-        Invoke-Remote -Command $copySitemapCmd -Description "Deploy: copying sitemap.xml to public site root"
+        $copySitemapCmd = 'set -e; generated_root="{0}"; site_root="{1}"; test -f "$generated_root/sitemap.xml"; test -f "$generated_root/sitemap/index.html"; mkdir -p "$site_root" "$site_root/sitemap"; cp "$generated_root/sitemap.xml" "$site_root/sitemap.xml"; cp "$generated_root/sitemap/index.html" "$site_root/sitemap/index.html"; chmod 644 "$site_root/sitemap.xml" "$site_root/sitemap/index.html"' -f $generatedPagesRoot, $remoteSiteRoot
+        Invoke-Remote -Command $copySitemapCmd -Description "Deploy: copying sitemap.xml and sitemap page to public site root"
     }
     else {
-        Write-Step "Deploy: sitemap.xml is already generated directly in the public site root."
+        Write-Step "Deploy: sitemap.xml and sitemap page are already generated directly in the public site root."
     }
 
     $chmodSitemapCmd = 'set -e; site_root="{0}"; test -f "$site_root/sitemap.xml"; chmod 644 "$site_root/sitemap.xml"' -f $remoteSiteRoot
     Invoke-Remote -Command $chmodSitemapCmd -Description "Deploy: setting public permissions on sitemap.xml"
+    $chmodSitemapPageCmd = 'set -e; site_root="{0}"; test -f "$site_root/sitemap/index.html"; chmod 644 "$site_root/sitemap/index.html"' -f $remoteSiteRoot
+    Invoke-Remote -Command $chmodSitemapPageCmd -Description "Deploy: setting public permissions on sitemap page"
 
     Sync-PublicStaticAssets -PackageDir $packageDir -ManifestInfo $publicStaticManifest -RemoteAppRoot $remoteAppRoot -RemoteSiteRoot $remoteSiteRoot -Timestamp $timestamp
 

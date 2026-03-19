@@ -7,6 +7,7 @@ app_name = "projects"
 
 urlpatterns = [
     path("api/projects/categories", views.get_all_categories, name="get_all_categories"),
+    path("api/projects/", views.get_all_projects, name="get_all_projects"),
     path("api/projects/<slug:slug>", views.get_projects_by_category, name="get_projects_by_category"),
     path("api/projects/detail/<slug:slug>", views.get_projects_details, name="get_projects_details"),
     path("api/projects/detail/<slug:slug>/full", views.get_project_detail_full, name="get_project_detail_full"),

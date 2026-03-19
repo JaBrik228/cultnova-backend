@@ -15,6 +15,41 @@ def _sanitize_limit(raw_value, default=10, max_value=100):
     return min(max(value, 1), max_value)
 
 
+def _build_project_card(project, include_category_title=False):
+    payload = {
+        "id": project.id,
+        "title": project.title,
+        "slug": project.slug,
+        "customer_name": project.customer_name,
+        "year": project.year,
+        "type": project.type,
+        "preview": project.preview_image or None,
+        "preview_image_alt": (project.preview_image_alt or "").strip(),
+        "url": build_public_project_path(project.slug),
+    }
+
+    if include_category_title:
+        payload["category_title"] = (getattr(project.category, "title", "") or "").strip()
+
+    return payload
+
+
+def _build_paginated_projects_payload(projects_page, page_key="page", include_category_title=False):
+    has_next_page = projects_page.has_next()
+    payload = {
+        page_key: projects_page.number,
+        "has_next": has_next_page,
+        "has_previous": projects_page.has_previous(),
+        "next_page": projects_page.next_page_number() if has_next_page else None,
+        "data": [],
+    }
+
+    for project in projects_page:
+        payload["data"].append(_build_project_card(project, include_category_title=include_category_title))
+
+    return payload
+
+
 def get_all_categories(request):
     categories = ProjectCategories.objects.all()
 
@@ -32,37 +67,39 @@ def get_all_categories(request):
     return JsonResponse(payload, safe=False)
 
 
+def get_all_projects(request):
+    page = request.GET.get("page", 1)
+    limit = _sanitize_limit(request.GET.get("limit", 10))
+
+    projects_qs = (
+        Projects.objects.select_related("category")
+        .filter(is_published=True)
+        .exclude(seo_robots__icontains="noindex")
+        .order_by("-created_at")
+    )
+    paginator = Paginator(projects_qs, limit)
+    projects_page = paginator.get_page(page)
+
+    payload = _build_paginated_projects_payload(
+        projects_page,
+        page_key="current_page",
+        include_category_title=True,
+    )
+
+    return JsonResponse(payload, safe=False)
+
+
 def get_projects_by_category(request, slug):
     page = request.GET.get("page", 1)
     limit = _sanitize_limit(request.GET.get("limit", 10))
 
-    projects_qs = Projects.objects.filter(category__slug=slug, is_published=True).order_by("-created_at")
+    projects_qs = Projects.objects.select_related("category").filter(category__slug=slug, is_published=True).order_by(
+        "-created_at"
+    )
     paginator = Paginator(projects_qs, limit)
     projects_page = paginator.get_page(page)
 
-    has_next_page = projects_page.has_next()
-    payload = {
-        "page": projects_page.number,
-        "has_next": has_next_page,
-        "has_previous": projects_page.has_previous(),
-        "next_page": projects_page.next_page_number() if has_next_page else None,
-        "data": [],
-    }
-
-    for project in projects_page:
-        payload["data"].append(
-            {
-                "id": project.id,
-                "title": project.title,
-                "slug": project.slug,
-                "customer_name": project.customer_name,
-                "year": project.year,
-                "type": project.type,
-                "preview": project.preview_image or None,
-                "preview_image_alt": (project.preview_image_alt or "").strip(),
-                "url": build_public_project_path(project.slug),
-            }
-        )
+    payload = _build_paginated_projects_payload(projects_page)
 
     return JsonResponse(payload, safe=False)
 
