@@ -219,8 +219,43 @@ class ProjectApiTests(TestCase):
         self.assertEqual(item["slug"], self.project.slug)
         self.assertEqual(item["category_title"], self.category.title)
         self.assertEqual(item["preview"], "https://example.com/preview.jpg")
+        self.assertEqual(item["images"], [{"url": "https://example.com/image.jpg", "alt": "Alt"}])
         self.assertNotIn(self.hidden_project.slug, [entry["slug"] for entry in payload["data"]])
         self.assertNotIn("seo-closed-project", [entry["slug"] for entry in payload["data"]])
+
+    def test_all_projects_endpoint_includes_images_with_alt_and_order(self):
+        ProjectsContentBlock.objects.create(
+            project=self.project,
+            type=ProjectsContentBlock.IMAGE,
+            order=2,
+            media="https://example.com/image-2.jpg",
+            media_alt="",
+            caption="Second caption",
+        )
+        ProjectsContentBlock.objects.create(
+            project=self.project,
+            type=ProjectsContentBlock.VIDEO,
+            order=3,
+            media="https://example.com/video.mp4",
+            first_video_frame="https://example.com/poster.jpg",
+            caption="Video caption",
+        )
+
+        with self.assertNumQueries(3):
+            response = self.client.get(reverse("projects:get_all_projects"))
+
+        self.assertEqual(response.status_code, 200)
+        payload = response.json()
+        item = payload["data"][0]
+
+        self.assertEqual(
+            item["images"],
+            [
+                {"url": "https://example.com/image.jpg", "alt": "Alt"},
+                {"url": "https://example.com/image-2.jpg", "alt": self.project.title},
+            ],
+        )
+        self.assertNotIn("video.mp4", [image["url"] for image in item["images"]])
 
     def test_all_projects_endpoint_paginates_with_current_page(self):
         second_visible = Projects.objects.create(

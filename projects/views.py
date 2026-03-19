@@ -1,4 +1,5 @@
 ﻿from django.core.paginator import Paginator
+from django.db.models import Prefetch
 from django.http import JsonResponse
 from django.shortcuts import get_object_or_404, render
 
@@ -15,7 +16,28 @@ def _sanitize_limit(raw_value, default=10, max_value=100):
     return min(max(value, 1), max_value)
 
 
-def _build_project_card(project, include_category_title=False):
+def _build_project_images(project):
+    image_blocks = getattr(project, "image_blocks", None)
+    if image_blocks is None:
+        image_blocks = project.blocks.filter(type=ProjectsContentBlock.IMAGE).order_by("order")
+
+    images = []
+    project_title = (project.title or "").strip() or project.title
+
+    for block in image_blocks:
+        if not block.media:
+            continue
+        images.append(
+            {
+                "url": block.media,
+                "alt": (block.media_alt or "").strip() or project_title,
+            }
+        )
+
+    return images
+
+
+def _build_project_card(project, include_category_title=False, include_images=False):
     payload = {
         "id": project.id,
         "title": project.title,
@@ -31,10 +53,18 @@ def _build_project_card(project, include_category_title=False):
     if include_category_title:
         payload["category_title"] = (getattr(project.category, "title", "") or "").strip()
 
+    if include_images:
+        payload["images"] = _build_project_images(project)
+
     return payload
 
 
-def _build_paginated_projects_payload(projects_page, page_key="page", include_category_title=False):
+def _build_paginated_projects_payload(
+    projects_page,
+    page_key="page",
+    include_category_title=False,
+    include_images=False,
+):
     has_next_page = projects_page.has_next()
     payload = {
         page_key: projects_page.number,
@@ -45,7 +75,13 @@ def _build_paginated_projects_payload(projects_page, page_key="page", include_ca
     }
 
     for project in projects_page:
-        payload["data"].append(_build_project_card(project, include_category_title=include_category_title))
+        payload["data"].append(
+            _build_project_card(
+                project,
+                include_category_title=include_category_title,
+                include_images=include_images,
+            )
+        )
 
     return payload
 
@@ -73,6 +109,13 @@ def get_all_projects(request):
 
     projects_qs = (
         Projects.objects.select_related("category")
+        .prefetch_related(
+            Prefetch(
+                "blocks",
+                queryset=ProjectsContentBlock.objects.filter(type=ProjectsContentBlock.IMAGE).order_by("order"),
+                to_attr="image_blocks",
+            )
+        )
         .filter(is_published=True)
         .exclude(seo_robots__icontains="noindex")
         .order_by("-created_at")
@@ -84,6 +127,7 @@ def get_all_projects(request):
         projects_page,
         page_key="current_page",
         include_category_title=True,
+        include_images=True,
     )
 
     return JsonResponse(payload, safe=False)
