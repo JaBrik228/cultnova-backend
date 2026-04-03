@@ -4,17 +4,17 @@ Django CMS that manages blog and project content and generates static detail pag
 
 ## Local run (prod-like)
 
-1. Create and activate a virtual environment.
-2. Install dependencies:
-   `pip install -r requirements.txt`
-3. Copy `.env.example` to `.env` and adjust values as needed.
-   `.env.example` is the tracked template and source of truth for available app settings.
-   Local `.env` may be shorter because some settings have defaults in `cultnova/settings.py`; keep only safe sample values and placeholders in the template.
-4. Run:
+1. Bootstrap the local environment:
+   `python tools/bootstrap_env.py`
+   This creates `.venv`, upgrades `pip`, installs dependencies, and copies `.env.example` to `.env` if the file is missing.
+2. Activate the virtual environment:
+   Windows: `.\.venv\Scripts\activate`
+   macOS/Linux: `source .venv/bin/activate`
+3. Run:
    `python manage.py migrate`
-5. Optional static build:
+4. Optional static build:
    `python manage.py collectstatic --noinput`
-6. Start:
+5. Start:
    `python manage.py runserver 127.0.0.1:8010`
 
 ## Blog static generation
