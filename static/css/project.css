@@ -481,6 +481,79 @@
     text-transform: lowercase;
 }
 
+.articles-slider--projects {
+    padding: 64px 0 96px;
+    background: #fff;
+}
+
+.articles-slider--projects .articles-slider__header {
+    margin-bottom: 64px;
+}
+
+.articles-slider--projects .articles-slider__title {
+    color: #212121;
+    font-size: 36px;
+    line-height: 44px;
+    font-weight: 700;
+    text-transform: uppercase;
+}
+
+.articles-slider--projects .articles-slider__nav {
+    gap: 0;
+}
+
+.articles-slider--projects .articles-slider__arrow {
+    width: 44px;
+    height: 44px;
+    border: 0;
+    background: transparent;
+    color: #212121;
+}
+
+.articles-slider--projects .articles-slider__arrow:hover {
+    background: rgba(97, 97, 97, 0.1);
+    border-color: transparent;
+}
+
+.articles-slider--projects .articles-slider__track {
+    gap: 24px;
+}
+
+.articles-slider--projects .articles-slider__card {
+    flex: 0 0 calc(33.333% - 16px);
+    border: 0;
+    border-radius: 0;
+    background: transparent;
+}
+
+.articles-slider--projects .articles-slider__card-link {
+    padding: 0;
+}
+
+.articles-slider--projects .articles-slider__card-image {
+    height: 256px;
+    margin-bottom: 16px;
+    border-radius: 16px;
+}
+
+.articles-slider--projects .articles-slider__card-title {
+    margin: 0 0 8px;
+    color: #212121;
+    font-size: 16px;
+    line-height: 24px;
+    font-weight: 700;
+}
+
+.articles-slider--projects .articles-slider__card-text {
+    color: #757575;
+    font-size: 14px;
+    line-height: 20px;
+    display: -webkit-box;
+    -webkit-box-orient: vertical;
+    -webkit-line-clamp: 4;
+    overflow: hidden;
+}
+
 .callback-popup {
     position: fixed;
     top: 50px;
@@ -654,6 +727,14 @@
         margin-left: auto;
     }
 
+    .articles-slider--projects {
+        padding: 56px 0 80px;
+    }
+
+    .articles-slider--projects .articles-slider__card {
+        flex: 0 0 calc(50% - 12px);
+    }
+
 }
 
 @media (max-width: 768px) {
@@ -708,5 +789,20 @@
 
     .articles-slider__more {
         margin-top: 40px;
+    }
+
+    .articles-slider--projects .articles-slider__header {
+        margin-bottom: 40px;
+        align-items: flex-start;
+        flex-direction: column;
+    }
+
+    .articles-slider--projects .articles-slider__title {
+        font-size: 28px;
+        line-height: 34px;
+    }
+
+    .articles-slider--projects .articles-slider__card {
+        flex: 0 0 100%;
     }
 }

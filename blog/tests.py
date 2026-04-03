@@ -356,6 +356,7 @@ class ArticleStaticGenerationSignalTests(TestCase):
                 sitemap_path = Path(temp_dir) / "sitemap.xml"
 
                 self.assertTrue(initial_target.exists())
+                self.assertIn('data-page="article"', initial_target.read_text(encoding="utf-8"))
                 self.assertIn("/articles/static-article/", sitemap_path.read_text(encoding="utf-8"))
 
                 with self.captureOnCommitCallbacks(execute=True):

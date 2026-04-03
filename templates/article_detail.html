@@ -132,7 +132,7 @@
         <link rel="stylesheet" href="/css/articles-slider.css?v=2026-03-10-2" />
         <link rel="stylesheet" href="/css/article.css?v=2026-03-10-4" />
     </head>
-    <body>
+    <body data-page="article">
         <div class="loader-wrap">
             <span class="loader"></span>
         </div>
@@ -515,11 +515,7 @@
             </svg>
         </button>
 
-        <script src="/js/cursor.js"></script>
         <script src="/js/script.js"></script>
-        <script src="/js/popup.js"></script>
-        <script src="/js/form-submit.js"></script>
-        <script src="/js/cookie-consent.js" defer></script>
         {% if related_articles %}
         <script src="/js/article-slider.js" defer></script>
         {% endif %} {% if article.has_video %}

@@ -408,6 +408,7 @@ class ProjectStaticGenerationSignalTests(TestCase):
                 target = Path(temp_dir) / "projects" / project.slug / "index.html"
                 sitemap_path = Path(temp_dir) / "sitemap.xml"
                 self.assertTrue(target.exists())
+                self.assertIn('data-page="project"', target.read_text(encoding="utf-8"))
                 self.assertIn("/projects/static-project/", sitemap_path.read_text(encoding="utf-8"))
 
                 with self.captureOnCommitCallbacks(execute=True):
