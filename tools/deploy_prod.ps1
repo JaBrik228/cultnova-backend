@@ -999,6 +999,29 @@ try {
     $env:SSH_USER = [string]$config["SSH_USER"]
     $env:SSH_PASS = [string]$config["SSH_PASS"]
 
+    $frontendRepoPath = ""
+    if ($config.ContainsKey("FRONTEND_REPO_PATH") -and -not [string]::IsNullOrWhiteSpace([string]$config["FRONTEND_REPO_PATH"])) {
+        $frontendRepoPath = [string]$config["FRONTEND_REPO_PATH"]
+    }
+    elseif (-not [string]::IsNullOrWhiteSpace($env:FRONTEND_REPO_PATH)) {
+        $frontendRepoPath = [string]$env:FRONTEND_REPO_PATH
+    }
+
+    $frontendExportDir = ""
+    if ($config.ContainsKey("FRONTEND_PARTIALS_EXPORT_DIR") -and -not [string]::IsNullOrWhiteSpace([string]$config["FRONTEND_PARTIALS_EXPORT_DIR"])) {
+        $frontendExportDir = [string]$config["FRONTEND_PARTIALS_EXPORT_DIR"]
+    }
+    elseif (-not [string]::IsNullOrWhiteSpace($env:FRONTEND_PARTIALS_EXPORT_DIR)) {
+        $frontendExportDir = [string]$env:FRONTEND_PARTIALS_EXPORT_DIR
+    }
+
+    if (-not [string]::IsNullOrWhiteSpace($frontendRepoPath)) {
+        $env:FRONTEND_REPO_PATH = $frontendRepoPath
+    }
+    if (-not [string]::IsNullOrWhiteSpace($frontendExportDir)) {
+        $env:FRONTEND_PARTIALS_EXPORT_DIR = $frontendExportDir
+    }
+
     $remoteAppRoot = ([string]$config["REMOTE_APP_ROOT"]).TrimEnd("/")
     $remoteSiteRoot = ([string]$config["REMOTE_SITE_ROOT"]).TrimEnd("/")
     $script:RemoteTmpDir = ([string]$config["REMOTE_TMP_DIR"]).TrimEnd("/")
@@ -1014,6 +1037,13 @@ try {
 
     Invoke-ProcessChecked -Exe "python" -ArgumentList @("-c", "import paramiko") -Description "Checking local python dependency: paramiko"
     Invoke-Remote -Command "echo connected && whoami" -Description "Checking SSH connectivity"
+
+    if (-not [string]::IsNullOrWhiteSpace($frontendRepoPath) -or -not [string]::IsNullOrWhiteSpace($frontendExportDir)) {
+        Invoke-ProcessChecked -Exe "python" -ArgumentList @("tools/sync_frontend_partials.py", "--strict") -Description "Syncing shared frontend partials into backend templates"
+    }
+    else {
+        Write-Step "Frontend partial sync skipped: FRONTEND_REPO_PATH / FRONTEND_PARTIALS_EXPORT_DIR not configured."
+    }
 
     # B. Package
     $packageDir = Join-Path $repoRoot ("server_backups\deploy_pkg_{0}" -f $timestamp)
@@ -1075,7 +1105,7 @@ try {
         Write-Step "Migrations will only run when pending migrations are detected and -RunMigrations is provided."
     }
 
-    $extractCmd = 'set -e; pkg="{0}"; app_root="{1}"; test -f "$pkg"; tar -xzf "$pkg" -C "$app_root"; echo EXTRACT_OK=1' -f $remotePackagePath, $remoteAppRoot
+    $extractCmd = 'set -e; pkg="{0}"; app_root="{1}"; test -f "$pkg"; tar --warning=no-timestamp -xzf "$pkg" -C "$app_root"; echo EXTRACT_OK=1' -f $remotePackagePath, $remoteAppRoot
     Invoke-Remote -Command $extractCmd -Description "Deploy: extracting package on server"
 
     $installRequirementsCmd = 'set -e; app_root="{0}"; venv_py="{1}"; "$venv_py" -m pip install --disable-pip-version-check -r "$app_root/requirements.txt"' -f $remoteAppRoot, $remoteVenvPy

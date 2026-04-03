@@ -13,6 +13,7 @@ from django.conf import settings
 from django.template.loader import render_to_string
 
 from core.services.build_item_html import get_generated_pages_root
+from core.services.frontend_partials_sync import sync_frontend_partials
 from core.services.sitemap import SITEMAP_FILENAME
 
 logger = logging.getLogger(__name__)
@@ -156,6 +157,14 @@ def build_html_sitemap() -> tuple[HtmlSitemapSection, ...]:
 
 
 def build_static_html_sitemap_page() -> HtmlSitemapBuildResult:
+    if getattr(settings, "FRONTEND_PARTIALS_AUTO_SYNC", True):
+        sync_frontend_partials(
+            backend_base_dir=settings.BASE_DIR,
+            frontend_repo_path=getattr(settings, "FRONTEND_REPO_PATH", ""),
+            frontend_export_dir=getattr(settings, "FRONTEND_PARTIALS_EXPORT_DIR", ""),
+            strict=False,
+        )
+
     generated_root = get_generated_pages_root()
     sections = build_html_sitemap()
     canonical_url = _build_public_url(SITEMAP_PAGE_PATH)

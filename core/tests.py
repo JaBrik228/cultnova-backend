@@ -1,3 +1,4 @@
+import json
 import os
 import tempfile
 import xml.etree.ElementTree as ET
@@ -10,6 +11,7 @@ from django.test import SimpleTestCase, TestCase, override_settings
 from django.utils import timezone
 
 from blog.models import Articles
+from core.services.frontend_partials_sync import sync_frontend_partials
 from core.services.html_sitemap import (
     SitemapXmlMissingError,
     build_html_sitemap,
@@ -291,3 +293,92 @@ class HtmlSitemapServiceTests(SimpleTestCase):
     def _write_html(self, target_path: Path, content: str):
         target_path.parent.mkdir(parents=True, exist_ok=True)
         target_path.write_text(content, encoding="utf-8")
+
+
+class FrontendPartialSyncTests(SimpleTestCase):
+    def test_sync_frontend_partials_prefers_newer_repo_sources(self):
+        with tempfile.TemporaryDirectory() as backend_dir, tempfile.TemporaryDirectory() as frontend_dir:
+            backend_root = Path(backend_dir)
+            frontend_root = Path(frontend_dir)
+
+            self._write_partial_sources(
+                frontend_root,
+                {
+                    "src/partials/header.html": '<header><a href="{{ROOT}}create/museum/">Header</a></header>',
+                    "src/partials/footer.html": '<footer><a href="{{ROOT}}info/contact/">Footer</a></footer>',
+                    "src/partials/popup.html": '<div><a href="{{ROOT}}legal/privacy-policy/">Popup</a></div>',
+                    "src/partials/call-back.html": '<div><a href="{{ROOT}}legal/personal-data/">Callback</a></div>',
+                },
+            )
+            self._write_export_bundle(
+                frontend_root / "deploy_artifacts" / "backend-partials",
+                generated_at="2026-03-01T00:00:00Z",
+                files={
+                    "header.html": "<header>stale export</header>",
+                    "footer.html": "<footer>stale export</footer>",
+                    "popup.html": "<div>stale export</div>",
+                    "callback_popup.html": "<div>stale export</div>",
+                },
+            )
+
+            source_mtime = datetime(2026, 4, 3, 12, 0, 0, tzinfo=dt_timezone.utc).timestamp()
+            for file_path in (frontend_root / "src" / "partials").glob("*.html"):
+                os.utime(file_path, (source_mtime, source_mtime))
+
+            result = sync_frontend_partials(backend_root, frontend_repo_path=frontend_root, strict=True)
+
+            self.assertIsNotNone(result)
+            self.assertEqual(result.source_kind, "repo")
+            header = (backend_root / "templates" / "partials" / "header.html").read_text(encoding="utf-8")
+            self.assertIn("source: src/partials/header.html", header)
+            self.assertIn('href="/create/museum/"', header)
+            self.assertNotIn("{{ROOT}}", header)
+
+    def test_sync_frontend_partials_uses_export_bundle_when_repo_is_unavailable(self):
+        with tempfile.TemporaryDirectory() as backend_dir, tempfile.TemporaryDirectory() as export_dir:
+            backend_root = Path(backend_dir)
+            export_root = Path(export_dir)
+            self._write_export_bundle(
+                export_root,
+                generated_at="2026-04-03T09:30:00Z",
+                files={
+                    "header.html": "<header>export header</header>",
+                    "footer.html": "<footer>export footer</footer>",
+                    "popup.html": "<div>export popup</div>",
+                    "callback_popup.html": "<div>export callback</div>",
+                },
+            )
+
+            result = sync_frontend_partials(backend_root, frontend_export_dir=export_root, strict=True)
+
+            self.assertIsNotNone(result)
+            self.assertEqual(result.source_kind, "export")
+            footer = (backend_root / "templates" / "partials" / "footer.html").read_text(encoding="utf-8")
+            self.assertIn("source: src/partials/footer.html", footer)
+            self.assertIn("export footer", footer)
+
+    def test_sync_frontend_partials_strict_raises_when_source_missing(self):
+        with tempfile.TemporaryDirectory() as backend_dir:
+            with self.assertRaises(FileNotFoundError):
+                sync_frontend_partials(Path(backend_dir), strict=True)
+
+    def _write_partial_sources(self, frontend_root: Path, files: dict[str, str]):
+        for relative_path, content in files.items():
+            target_path = frontend_root / relative_path
+            target_path.parent.mkdir(parents=True, exist_ok=True)
+            target_path.write_text(content, encoding="utf-8")
+
+    def _write_export_bundle(self, export_root: Path, generated_at: str, files: dict[str, str]):
+        export_root.mkdir(parents=True, exist_ok=True)
+        manifest_files = []
+        for target_name, content in files.items():
+            (export_root / target_name).write_text(f"{content}\n", encoding="utf-8")
+            source_name = "src/partials/call-back.html" if target_name == "callback_popup.html" else f"src/partials/{target_name}"
+            manifest_files.append({"source": source_name, "target": target_name})
+
+        manifest = {
+            "version": 1,
+            "generatedAt": generated_at,
+            "files": manifest_files,
+        }
+        (export_root / "manifest.json").write_text(json.dumps(manifest), encoding="utf-8")

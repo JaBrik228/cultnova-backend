@@ -6,6 +6,7 @@ from django.template.loader import render_to_string
 
 from blog.services.article_rendering import build_article_render_context
 from core.models.base_item import BaseContentItem
+from core.services.frontend_partials_sync import sync_frontend_partials
 from projects.services.project_rendering import build_project_render_context
 
 
@@ -14,6 +15,18 @@ def get_generated_pages_root() -> Path:
     if not generated_root.is_absolute():
         generated_root = Path(settings.BASE_DIR) / generated_root
     return generated_root.resolve()
+
+
+def _sync_frontend_partials_if_configured():
+    if not getattr(settings, "FRONTEND_PARTIALS_AUTO_SYNC", True):
+        return
+
+    sync_frontend_partials(
+        backend_base_dir=settings.BASE_DIR,
+        frontend_repo_path=getattr(settings, "FRONTEND_REPO_PATH", ""),
+        frontend_export_dir=getattr(settings, "FRONTEND_PARTIALS_EXPORT_DIR", ""),
+        strict=False,
+    )
 
 
 def _build_article_path(base_gen_root: str, slug: str):
@@ -40,6 +53,7 @@ def build_item_detail_static_html(instance: BaseContentItem, template_name: str,
     """
     Generate static HTML and write it into the target directory.
     """
+    _sync_frontend_partials_if_configured()
     base_gen_root = str(get_generated_pages_root())
 
     if folder_name in {"article", "articles"}:

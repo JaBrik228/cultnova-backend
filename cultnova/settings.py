@@ -46,6 +46,9 @@ VK_CLOUD_S3_DOMAIN = os.getenv('VK_CLOUD_S3_DOMAIN')
 GENERATED_HTML_PAGES_PATH = os.getenv('GENERATED_HTML_PAGES_PATH', str(BASE_DIR / 'generated_pages'))
 SITE_PUBLIC_BASE_URL = os.getenv('SITE_PUBLIC_BASE_URL', 'http://localhost').rstrip('/')
 ADMIN_URL = os.getenv('ADMIN_URL', 'backend-admin/').strip('/').strip() + '/'
+FRONTEND_REPO_PATH = os.getenv('FRONTEND_REPO_PATH', '').strip()
+FRONTEND_PARTIALS_EXPORT_DIR = os.getenv('FRONTEND_PARTIALS_EXPORT_DIR', '').strip()
+FRONTEND_PARTIALS_AUTO_SYNC = env_bool('FRONTEND_PARTIALS_AUTO_SYNC', True)
 
 # SECURITY WARNING: don't run with debug turned on in production!
 DEBUG = env_bool('DEBUG', True)

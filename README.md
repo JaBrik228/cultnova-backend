@@ -17,6 +17,17 @@ Django CMS that manages blog and project content and generates static detail pag
 5. Start:
    `python manage.py runserver 127.0.0.1:8010`
 
+## Frontend partial sync
+
+- Shared public partials (`header`, `footer`, `popup`, `callback`) can now be synced from the frontend repo.
+- Set `FRONTEND_REPO_PATH` in `.env` for local auto-sync during article/project/sitemap generation.
+- Optional exported artifacts can be provided through `FRONTEND_PARTIALS_EXPORT_DIR`; if both repo sources and exported artifacts exist, the newer source wins.
+- Manual sync:
+  `python tools/sync_frontend_partials.py --strict`
+  or
+  `python manage.py sync_frontend_partials --strict`
+- Production deploy now runs the sync step automatically before packaging when `FRONTEND_REPO_PATH` or `FRONTEND_PARTIALS_EXPORT_DIR` is configured in `.env.deploy`.
+
 ## Blog static generation
 
 - Single article generation happens automatically by signals on article/block save/delete.
@@ -92,6 +103,13 @@ Deploy behavior:
 - If pending migrations are detected and `-RunMigrations` was not provided, deploy stops with a clear message and must be re-run with `-RunMigrations`.
 - For the current blog HTML-body / WYSIWYG release, use:
   `powershell -ExecutionPolicy Bypass -File tools/deploy_prod.ps1 -RunMigrations`
+
+## Full-stack deploy
+
+- One command for site + CMS:
+  `powershell -ExecutionPolicy Bypass -File tools/deploy_full_stack.ps1`
+- The script first deploys the frontend from `FRONTEND_REPO_PATH`, then deploys the backend with shared partial sync.
+- Backend config lives in local `.env.deploy`; frontend configs are read from `<FRONTEND_REPO_PATH>/.env.deploy.site` and `.env.deploy.mail`.
 
 Manual SSH / rollback helper:
 

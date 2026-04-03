@@ -1,143 +1,152 @@
-<!-- source: src/partials/popup.html; synced: 2026-02-15 -->
-<div class="popup" id="popup">
-    <div class="popup__content">
-        <button class="popup__close" id="popupClose" aria-label="Закрыть">
-            <svg width="24" height="24" viewBox="0 0 24 24" fill="none">
-                <path
-                    d="M18 6L6 18M6 6L18 18"
-                    stroke="#2B2A29"
-                    stroke-width="2"
-                    stroke-linecap="round"
-                />
-            </svg>
-        </button>
+<!-- source: src/partials/popup.html; synced: 2026-04-03T15:38:36Z -->
+<div class="popup" data-popup="project" data-yandex-goal="start">
+  <div class="popup__content">
+    <button class="popup__close" data-popup-close aria-label="Закрыть">
+      <svg width="24" height="24" viewBox="0 0 24 24" fill="none">
+        <path
+          d="M18 6L6 18M6 6L18 18"
+          stroke="#2B2A29"
+          stroke-width="2"
+          stroke-linecap="round"
+        />
+      </svg>
+    </button>
 
-        <h2 class="popup__title">получить расчёт проекта</h2>
-        <p class="popup__description">
-            В нашем портфолио собраны проекты различной направленности:
-            <br /><br />от интерактивного приложения исторической библиотеки, до
-            реализации музеев под ключ. К любой задаче мы подходим с особым
-            вниманием, выбирая решения, которые подойдут именно Вам.
-            <br /><br />Для начала работы нам надо поговорить. Достаточно
-            рассказать о своем проекте, указать контакты, и мы свяжемся, чтобы
-            все обсудить.
-        </p>
+    <h2 class="popup__title">получить расчёт проекта</h2>
+    <p class="popup__description">
+      В нашем портфолио собраны проекты различной направленности:
+      <br><br>
+      от интерактивного приложения исторической библиотеки, до реализации
+      музеев под ключ. К любой задаче мы подходим с особым вниманием, выбирая
+      решения, которые подойдут именно Вам.
+      <br><br>
+      Для начала работы нам надо поговорить. Достаточно рассказать о своем
+      проекте, указать контакты, и мы свяжемся, чтобы все обсудить.
+    </p>
 
-        <h3 class="popup__subtitle">Новый проект:</h3>
-        <div class="popup__tags">
-            <span class="popup__tag">музей или интерактивное пространство</span>
-            <span class="popup__tag">концепция экспозиции</span>
-            <span class="popup__tag">квест-рум</span>
-            <span class="popup__tag">дизайн проект</span>
-            <span class="popup__tag">застройка выставки</span>
-            <span class="popup__tag"
-                >экспозиционное и выставочное оборудование</span
-            >
-            <span class="popup__tag">рабочий проект</span>
-            <span class="popup__tag">создание контента и анимация</span>
-            <span class="popup__tag">разработка приложений и ПО</span>
-            <span class="popup__tag"
-                >техническое сопровождение и обслуживание</span
-            >
-            <span class="popup__tag">доступная среда</span>
-        </div>
-
-        <form class="popup__form">
-            <div class="popup__form-group">
-                <input
-                    type="text"
-                    class="popup__input"
-                    name="company"
-                    placeholder="название компании"
-                />
-            </div>
-
-            <div
-                class="popup__form-group popup__form-group__area pc-popup-text"
-            >
-                <textarea
-                    rows="1"
-                    class="popup__input"
-                    name="project"
-                    placeholder="несколько слов о проекте и приблизительный бюджет"
-                ></textarea>
-            </div>
-
-            <div
-                class="popup__form-group popup__form-group__area mobile-popup-text"
-            >
-                <textarea
-                    rows="2"
-                    class="popup__input"
-                    name="project"
-                    placeholder="несколько слов о проекте и приблизительный бюджет"
-                ></textarea>
-            </div>
-
-            <div class="popup__form-group">
-                <input
-                    type="email"
-                    class="popup__input"
-                    name="email"
-                    placeholder="электронная почта"
-                />
-            </div>
-
-            <div class="popup__form-group">
-                <input
-                    type="tel"
-                    class="popup__input"
-                    name="phone"
-                    placeholder="телефон или любой другой удобный мессенджер "
-                />
-            </div>
-
-            <div class="popup__form-group">
-                <input
-                    type="text"
-                    class="popup__input"
-                    name="name"
-                    placeholder="имя"
-                />
-            </div>
-
-            <div class="popup__form-group popup__form-group--file">
-                <input
-                    type="file"
-                    id="fileInput"
-                    class="popup__input popup__input--file"
-                    multiple
-                />
-                <span class="popup__file-name"
-                    >Приложить файлы (до 10 Мб.)</span
-                >
-            </div>
-
-            <div class="popup__button">
-                <button type="submit" class="popup__submit">
-                    отправить заявку
-                </button>
-                <br />
-            </div>
-            <div class="consent-container">
-                <label for="consent" class="consent-text">
-                    Нажимая кнопку "отправить заявку" вы соглашаетесь с
-                    <a href="/personal-data/" class="privacy-link"
-                        >Обработкой персональных данных</a
-                    >и
-                    <a href="/privacy-policy/" class="privacy-link"
-                        >Политикой Конфиденциальности</a
-                    >
-                </label>
-            </div>
-
-            <div class="popup__icon">
-                <img
-                    src="https://cultnova-media.hb.ru-msk.vkcloud-storage.ru/site-icons/popup-laptop.webp"
-                    alt="decor"
-                    class="popup__decor"
-                />
-            </div>
-        </form>
+    <h3 class="popup__subtitle">Новый проект:</h3>
+    <div class="popup__tags" data-form-tags>
+      <button type="button" class="popup__tag" data-tag-value>
+        музей или интерактивное пространство
+      </button>
+      <button type="button" class="popup__tag" data-tag-value>
+        концепция экспозиции
+      </button>
+      <button type="button" class="popup__tag" data-tag-value>квест-рум</button>
+      <button type="button" class="popup__tag" data-tag-value>
+        дизайн проект
+      </button>
+      <button type="button" class="popup__tag" data-tag-value>
+        застройка выставки
+      </button>
+      <button type="button" class="popup__tag" data-tag-value>
+        экспозиционное и выставочное оборудование
+      </button>
+      <button type="button" class="popup__tag" data-tag-value>
+        рабочий проект
+      </button>
+      <button type="button" class="popup__tag" data-tag-value>
+        создание контента и анимация
+      </button>
+      <button type="button" class="popup__tag" data-tag-value>
+        разработка приложений и ПО
+      </button>
+      <button type="button" class="popup__tag" data-tag-value>
+        техническое сопровождение и обслуживание
+      </button>
+      <button type="button" class="popup__tag" data-tag-value>
+        доступная среда
+      </button>
     </div>
+
+    <form
+      class="popup__form"
+      data-popup-form
+      data-form-type="project"
+      data-yandex-goal-success="form_submit_success"
+    >
+      <div class="popup__form-group">
+        <input
+          type="text"
+          class="popup__input"
+          name="company"
+          placeholder="название компании"
+        />
+      </div>
+
+      <div class="popup__form-group popup__form-group__area popup__form-group__area--project">
+        <textarea
+          rows="2"
+          class="popup__input"
+          name="project"
+          placeholder="несколько слов о проекте и приблизительный бюджет"
+        ></textarea>
+      </div>
+
+      <div class="popup__form-group">
+        <input
+          type="email"
+          class="popup__input"
+          name="email"
+          placeholder="электронная почта"
+        />
+      </div>
+
+      <div class="popup__form-group">
+        <input
+          type="tel"
+          class="popup__input"
+          name="phone"
+          placeholder="телефон или любой другой удобный мессенджер"
+        />
+      </div>
+
+      <div class="popup__form-group">
+        <input type="text" class="popup__input" name="name" placeholder="имя" />
+      </div>
+
+      <div class="popup__form-group popup__form-group--file">
+        <input
+          type="file"
+          class="popup__input popup__input--file"
+          data-form-file-input
+          multiple
+        />
+        <span class="popup__file-name" data-form-file-label>
+          Приложить файлы (до 10 Мб.)
+        </span>
+      </div>
+
+      <div class="popup__button">
+        <button type="submit" class="popup__submit">
+          отправить заявку
+        </button>
+      </div>
+
+      <div class="consent-container">
+        <label class="consent-text">
+          Нажимая кнопку "отправить заявку" вы соглашаетесь с
+          <a href="/legal/personal-data/" class="privacy-link">
+            Обработкой персональных данных
+          </a>
+          и
+          <a href="/legal/privacy-policy/" class="privacy-link">
+            Политикой Конфиденциальности
+          </a>
+        </label>
+      </div>
+
+      <div class="popup__icon">
+        <img
+          src="data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///ywAAAAAAQABAAACAUwAOw=="
+          data-src="https://cultnova-media.hb.ru-msk.vkcloud-storage.ru/site-icons/popup-laptop.webp"
+          alt="decor"
+          class="popup__decor"
+          loading="lazy"
+          decoding="async"
+          fetchpriority="low"
+        />
+      </div>
+    </form>
+  </div>
 </div>
