@@ -17,7 +17,7 @@ from core.services.html_sitemap import (
     build_html_sitemap,
     build_static_html_sitemap_page,
 )
-from core.services.sitemap import build_sitemap
+from core.services.sitemap import build_public_sitemaps, build_sitemap
 from projects.models import ProjectCategories, Projects
 
 
@@ -52,7 +52,7 @@ class SitemapServiceTests(TestCase):
 
                 category = ProjectCategories.objects.create(title="Museums", slug="museums")
 
-                with self.captureOnCommitCallbacks(execute=True):
+                with self.captureOnCommitCallbacks(execute=False):
                     article = Articles.objects.create(
                         title="Live Article",
                         slug="live-article",
@@ -75,6 +75,15 @@ class SitemapServiceTests(TestCase):
                         seo_description="SEO description",
                         is_published=True,
                     )
+
+                self._write_html(
+                    root / "articles" / "live-article" / "index.html",
+                    '<html><head><meta name="robots" content="index,follow"></head><body>Live article</body></html>',
+                )
+                self._write_html(
+                    root / "projects" / "live-project" / "index.html",
+                    '<html><head><meta name="robots" content="index,follow"></head><body>Live project</body></html>',
+                )
 
                 article_updated_at = timezone.make_aware(datetime(2026, 2, 5, 8, 15, 30))
                 project_updated_at = timezone.make_aware(datetime(2026, 2, 6, 9, 45, 0))
@@ -130,6 +139,112 @@ class SitemapServiceTests(TestCase):
                 self.assertIn("skipped noindex: 0", output)
                 self.assertTrue((root / "sitemap.xml").exists())
                 self.assertTrue((root / "sitemap" / "index.html").exists())
+
+    @override_settings(
+        SITE_PUBLIC_BASE_URL="https://example.com",
+        FRONTEND_PARTIALS_AUTO_SYNC=False,
+    )
+    def test_build_public_sitemaps_writes_xml_first_and_then_html(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            with override_settings(GENERATED_HTML_PAGES_PATH=temp_dir):
+                root = Path(temp_dir)
+                self._write_html(
+                    root / "index.html",
+                    '<html><head><meta name="robots" content="index,follow"></head><title>Home</title><body>Home</body></html>',
+                )
+                self._write_html(
+                    root / "about" / "index.html",
+                    '<html><head><meta name="robots" content="index,follow"></head><title>About</title><body>About</body></html>',
+                )
+
+                result = build_public_sitemaps()
+
+                self.assertEqual(result.xml_result.output_path, root / "sitemap.xml")
+                self.assertEqual(result.html_result.output_path, root / "sitemap" / "index.html")
+                self.assertTrue(result.xml_result.output_path.exists())
+                self.assertTrue(result.html_result.output_path.exists())
+                self.assertIn("/about/", result.html_result.output_path.read_text(encoding="utf-8"))
+
+    def _write_html(self, target_path: Path, content: str):
+        target_path.parent.mkdir(parents=True, exist_ok=True)
+        target_path.write_text(content, encoding="utf-8")
+
+
+class PublicSitemapSignalTests(TestCase):
+    @override_settings(
+        SITE_PUBLIC_BASE_URL="https://example.com",
+        FRONTEND_PARTIALS_AUTO_SYNC=False,
+    )
+    def test_article_publish_and_unpublish_refresh_xml_and_html_sitemaps(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            with override_settings(GENERATED_HTML_PAGES_PATH=temp_dir):
+                root = Path(temp_dir)
+                self._write_html(
+                    root / "index.html",
+                    '<html><head><meta name="robots" content="index,follow"></head><title>Home</title><body>Home</body></html>',
+                )
+
+                with self.captureOnCommitCallbacks(execute=True):
+                    article = Articles.objects.create(
+                        title="Signal Article",
+                        slug="signal-article",
+                        body_html="<p>Body</p>",
+                        excerpt="Excerpt",
+                        seo_title="SEO title",
+                        seo_description="SEO description",
+                        is_published=True,
+                    )
+
+                self.assertSitemapContains(root, "/articles/signal-article/")
+
+                article.is_published = False
+                with self.captureOnCommitCallbacks(execute=True):
+                    article.save()
+
+                self.assertSitemapNotContains(root, "/articles/signal-article/")
+
+    @override_settings(
+        SITE_PUBLIC_BASE_URL="https://example.com",
+        FRONTEND_PARTIALS_AUTO_SYNC=False,
+    )
+    def test_project_publish_refreshes_xml_and_html_sitemaps(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            with override_settings(GENERATED_HTML_PAGES_PATH=temp_dir):
+                root = Path(temp_dir)
+                self._write_html(
+                    root / "index.html",
+                    '<html><head><meta name="robots" content="index,follow"></head><title>Home</title><body>Home</body></html>',
+                )
+                category = ProjectCategories.objects.create(title="Museums", slug="museums")
+
+                with self.captureOnCommitCallbacks(execute=True):
+                    Projects.objects.create(
+                        title="Signal Project",
+                        slug="signal-project",
+                        category=category,
+                        customer_name="Client",
+                        year=2026,
+                        type="Installation",
+                        body_html="<p>Body</p>",
+                        excerpt="Excerpt",
+                        seo_title="SEO title",
+                        seo_description="SEO description",
+                        is_published=True,
+                    )
+
+                self.assertSitemapContains(root, "/projects/signal-project/")
+
+    def assertSitemapContains(self, root: Path, public_path: str):
+        xml = (root / "sitemap.xml").read_text(encoding="utf-8")
+        html = (root / "sitemap" / "index.html").read_text(encoding="utf-8")
+        self.assertIn(public_path, xml)
+        self.assertIn(public_path, html)
+
+    def assertSitemapNotContains(self, root: Path, public_path: str):
+        xml = (root / "sitemap.xml").read_text(encoding="utf-8")
+        html = (root / "sitemap" / "index.html").read_text(encoding="utf-8")
+        self.assertNotIn(public_path, xml)
+        self.assertNotIn(public_path, html)
 
     def _write_html(self, target_path: Path, content: str):
         target_path.parent.mkdir(parents=True, exist_ok=True)

@@ -4,7 +4,7 @@ from django.dispatch import receiver
 from django.utils import timezone
 
 from core.services.build_item_html import build_item_detail_static_html, delete_item_detail_static_html
-from core.services.sitemap import build_sitemap
+from core.services.sitemap import build_public_sitemaps
 
 from .models import Articles, ArticlesContentBlock
 
@@ -19,7 +19,7 @@ def _schedule_article_rebuild(instance, previous_slug=None, previous_is_publishe
         else:
             delete_item_detail_static_html(instance, "articles")
 
-        build_sitemap()
+        build_public_sitemaps()
 
     transaction.on_commit(callback)
 
@@ -28,7 +28,7 @@ def _schedule_article_rebuild_by_id(article_id: int):
     def callback():
         article = Articles.objects.filter(pk=article_id).first()
         if not article:
-            build_sitemap()
+            build_public_sitemaps()
             return
 
         if article.is_published:
@@ -36,7 +36,7 @@ def _schedule_article_rebuild_by_id(article_id: int):
         else:
             delete_item_detail_static_html(article, "articles")
 
-        build_sitemap()
+        build_public_sitemaps()
 
     transaction.on_commit(callback)
 
@@ -83,7 +83,7 @@ def block_save_handler(sender, instance, **kwargs):
 def block_delete_handler(sender, instance, **kwargs):
     article_id = instance.article_id
     if not article_id:
-        transaction.on_commit(build_sitemap)
+        transaction.on_commit(build_public_sitemaps)
         return
 
     Articles.objects.filter(pk=article_id).update(updated_at=timezone.now())

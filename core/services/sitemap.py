@@ -38,6 +38,12 @@ class SitemapBuildResult:
     skipped_noindex_count: int
 
 
+@dataclass(frozen=True)
+class PublicSitemapsBuildResult:
+    xml_result: SitemapBuildResult
+    html_result: HtmlSitemapBuildResult
+
+
 class _RobotsMetaParser(HTMLParser):
     def __init__(self):
         super().__init__()
@@ -111,6 +117,17 @@ def build_sitemap() -> SitemapBuildResult:
         output_path=output_path,
         url_count=len(entries),
         skipped_noindex_count=skipped_noindex_count,
+    )
+
+
+def build_public_sitemaps() -> PublicSitemapsBuildResult:
+    from core.services.html_sitemap import build_static_html_sitemap_page
+
+    xml_result = build_sitemap()
+    html_result = build_static_html_sitemap_page()
+    return PublicSitemapsBuildResult(
+        xml_result=xml_result,
+        html_result=html_result,
     )
 
 
