@@ -177,19 +177,19 @@ def _build_projects_collection_json_ld(
     *,
     title: str,
     description: str,
-    page_url: str,
+    canonical_url: str,
 ) -> str:
     payload = {
         "@context": "https://schema.org",
         "@type": ["WebPage", "CollectionPage"],
         "name": title,
         "description": description,
-        "url": page_url,
-        "mainEntityOfPage": page_url,
+        "url": canonical_url,
+        "mainEntityOfPage": canonical_url,
         "isPartOf": {
             "@type": "WebSite",
             "name": "Cultnova",
-            "url": (settings.SITE_PUBLIC_BASE_URL or "").rstrip("/") or page_url,
+            "url": (settings.SITE_PUBLIC_BASE_URL or "").rstrip("/") or canonical_url,
         },
     }
     return mark_safe(json.dumps(payload, ensure_ascii=False))
@@ -214,6 +214,10 @@ def build_projects_listing_context(
         page_title = "Проекты"
         page_description = "Проекты компании Cultnova."
         page_url = build_public_projects_url()
+        page_canonical = page_url
+        page_keywords = ""
+        page_robots = "index,follow"
+        page_heading = "Проекты"
         page_path = build_public_projects_path()
         api_endpoint = build_public_projects_api_url()
         empty_title = "Пока нет опубликованных проектов."
@@ -223,9 +227,15 @@ def build_projects_listing_context(
             {"title": "Проекты", "url": build_public_projects_path()},
         ]
     else:
-        page_title = f"{active_category.title} | Проекты"
-        page_description = f"Проекты Cultnova в категории «{active_category.title}»."
+        page_title = _normalize_text(active_category.seo_title) or f"{active_category.title} | Проекты"
+        page_description = _normalize_text(active_category.seo_description) or (
+            f"Проекты Cultnova в категории «{active_category.title}»."
+        )
+        page_keywords = _normalize_text(active_category.seo_keywords)
+        page_robots = _normalize_text(active_category.seo_robots) or "index,follow"
         page_url = build_public_project_category_url(active_category.slug)
+        page_canonical = _normalize_text(active_category.canonical_url) or page_url
+        page_heading = _normalize_text(active_category.page_h1) or "Проекты"
         page_path = build_public_project_category_path(active_category.slug)
         api_endpoint = build_public_projects_api_url(active_category.slug)
         empty_title = f"В категории «{active_category.title}» пока нет опубликованных проектов."
@@ -267,11 +277,12 @@ def build_projects_listing_context(
         "page": {
             "title": page_title,
             "description": page_description,
-            "url": page_url,
+            "keywords": page_keywords,
+            "url": page_canonical,
             "path": page_path,
-            "canonical": page_url,
-            "robots": "index,follow",
-            "heading": "Проекты",
+            "canonical": page_canonical,
+            "robots": page_robots,
+            "heading": page_heading,
             "active_category_title": active_category.title if active_category else "",
             "hero_image": "/images/projects/projects.png",
             "hero_image_mobile": "/images/projects/projects-mobile.png",
@@ -289,7 +300,7 @@ def build_projects_listing_context(
         "collection_json_ld": _build_projects_collection_json_ld(
             title=page_title,
             description=page_description,
-            page_url=page_url,
+            canonical_url=page_canonical,
         ),
     }
 

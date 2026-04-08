@@ -7,6 +7,9 @@
 
         <title>{{ page.title }} | Cultnova</title>
         <meta name="description" content="{{ page.description }}" />
+        {% if page.keywords %}
+        <meta name="keywords" content="{{ page.keywords }}" />
+        {% endif %}
 
         <link rel="icon" href="https://cultnova-media.hb.ru-msk.vkcloud-storage.ru/site-icons/favicon.svg" type="image/svg+xml" />
         <link rel="canonical" href="{{ page.canonical }}" />
@@ -21,7 +24,7 @@
         {% endif %}
 
         <meta property="og:type" content="website" />
-        <meta property="og:url" content="{{ page.url }}" />
+        <meta property="og:url" content="{{ page.canonical }}" />
         <meta property="og:title" content="{{ page.title }} | Cultnova" />
         <meta property="og:description" content="{{ page.description }}" />
         {% if page.share_image %}

@@ -93,6 +93,27 @@ class ProjectBodyMigrationTests(MigrationTestCase):
         self.assertTrue(project.preview_image_alt)
 
 
+class ProjectCategorySeoMigrationTests(MigrationTestCase):
+    migrate_from = ("projects", "0009_migrate_project_body_html_and_seo")
+    migrate_to = ("projects", "0010_projectcategories_page_h1_and_seo_fields")
+
+    def set_up_before_migration(self, apps):
+        ProjectCategories = apps.get_model("projects", "ProjectCategories")
+        category = ProjectCategories.objects.create(title="Museums", slug="museums")
+        self.category_id = category.id
+
+    def test_existing_categories_receive_new_seo_fields_and_noindex_defaults(self):
+        ProjectCategories = self.apps.get_model("projects", "ProjectCategories")
+        category = ProjectCategories.objects.get(pk=self.category_id)
+
+        self.assertEqual(category.page_h1, "")
+        self.assertEqual(category.seo_title, "")
+        self.assertEqual(category.seo_description, "")
+        self.assertEqual(category.seo_keywords, "")
+        self.assertEqual(category.seo_robots, "noindex,nofollow")
+        self.assertEqual(category.canonical_url, "")
+
+
 class ProjectRenderingTests(TestCase):
     def setUp(self):
         self.category = ProjectCategories.objects.create(title="Museums", slug="museums")
@@ -255,6 +276,60 @@ class ProjectsListingViewTests(TestCase):
         self.assertContains(response, "Museum Beta")
         self.assertNotContains(response, "Education Gamma")
         self.assertNotContains(response, "Education Delta")
+
+    def test_projects_category_page_uses_category_seo_and_custom_h1(self):
+        self.museums.page_h1 = "Музеи и выставочные кейсы"
+        self.museums.seo_title = "Музейные проекты"
+        self.museums.seo_description = "Подборка музейных проектов Cultnova."
+        self.museums.seo_keywords = "музеи, проекты, cultnova"
+        self.museums.seo_robots = "noindex,nofollow"
+        self.museums.canonical_url = "https://example.com/custom-category/"
+        self.museums.save(
+            update_fields=[
+                "page_h1",
+                "seo_title",
+                "seo_description",
+                "seo_keywords",
+                "seo_robots",
+                "canonical_url",
+            ]
+        )
+
+        response = self.client.get(reverse("projects:projects_category_list", kwargs={"slug": self.museums.slug}))
+
+        self.assertEqual(response.status_code, 200)
+        html = response.content.decode("utf-8")
+        self.assertIn("<title>Музейные проекты | Cultnova</title>", html)
+        self.assertIn('<meta name="description" content="Подборка музейных проектов Cultnova." />', html)
+        self.assertIn('<meta name="keywords" content="музеи, проекты, cultnova" />', html)
+        self.assertIn('<meta name="robots" content="noindex,nofollow" />', html)
+        self.assertIn('<link rel="canonical" href="https://example.com/custom-category/" />', html)
+        self.assertIn('<meta property="og:url" content="https://example.com/custom-category/" />', html)
+        self.assertIn(">Музеи и выставочные кейсы</h1>", html)
+        self.assertIn('"mainEntityOfPage": "https://example.com/custom-category/"', html)
+
+    def test_projects_category_page_uses_fallback_seo_and_default_h1_when_fields_are_empty(self):
+        response = self.client.get(reverse("projects:projects_category_list", kwargs={"slug": self.museums.slug}))
+
+        self.assertEqual(response.status_code, 200)
+        html = response.content.decode("utf-8")
+        self.assertIn("<title>Museums | Проекты | Cultnova</title>", html)
+        self.assertIn('<meta name="description" content="Проекты Cultnova в категории «Museums»." />', html)
+        self.assertNotIn('<meta name="keywords"', html)
+        self.assertIn('<meta name="robots" content="index,follow" />', html)
+        self.assertIn(build_public_project_category_path(self.museums.slug), html)
+        self.assertIn(">Проекты</h1>", html)
+
+    def test_projects_root_page_keeps_default_seo_values(self):
+        response = self.client.get(reverse("projects:projects_list"))
+
+        self.assertEqual(response.status_code, 200)
+        html = response.content.decode("utf-8")
+        self.assertIn("<title>Проекты | Cultnova</title>", html)
+        self.assertIn('<meta name="description" content="Проекты компании Cultnova." />', html)
+        self.assertNotIn('<meta name="keywords"', html)
+        self.assertIn('<meta name="robots" content="index,follow" />', html)
+        self.assertIn(">Проекты</h1>", html)
 
     def test_empty_category_page_renders_empty_state(self):
         response = self.client.get(reverse("projects:projects_category_list", kwargs={"slug": self.empty_category.slug}))
@@ -529,6 +604,80 @@ class ProjectAdminInlineImageUploadTests(TestCase):
         upload_mock.assert_called_once()
 
 
+class ProjectCategoryAdminTests(TestCase):
+    def setUp(self):
+        self.user = get_user_model().objects.create_superuser(
+            username="category-admin",
+            email="category-admin@example.com",
+            password="password123",
+        )
+        self.category = ProjectCategories.objects.create(title="Museums", slug="museums")
+
+    def test_category_admin_change_page_contains_seo_fields_and_previews(self):
+        self.client.force_login(self.user)
+        response = self.client.get(reverse("admin:projects_projectcategories_change", args=[self.category.pk]))
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, 'name="page_h1"')
+        self.assertContains(response, 'name="seo_title"')
+        self.assertContains(response, 'name="seo_description"')
+        self.assertContains(response, 'name="seo_keywords"')
+        self.assertContains(response, 'name="seo_robots"')
+        self.assertContains(response, 'name="canonical_url"')
+        self.assertContains(response, "Public URL")
+        self.assertContains(response, "SEO snippet preview")
+
+    def test_category_admin_form_allows_blank_seo_fields(self):
+        from projects.admin import ProjectCategoriesAdminForm
+
+        form = ProjectCategoriesAdminForm(
+            data={
+                "title": "Education",
+                "slug": "education",
+                "page_h1": "",
+                "seo_title": "",
+                "seo_description": "",
+                "seo_keywords": "",
+                "seo_robots": "",
+                "canonical_url": "",
+            }
+        )
+
+        self.assertTrue(form.is_valid(), form.errors)
+        category = form.save()
+        self.assertEqual(category.page_h1, "")
+        self.assertEqual(category.seo_title, "")
+        self.assertEqual(category.seo_description, "")
+        self.assertEqual(category.seo_keywords, "")
+        self.assertEqual(category.seo_robots, "index,follow")
+        self.assertEqual(category.canonical_url, "")
+
+    def test_category_admin_form_trims_seo_fields(self):
+        from projects.admin import ProjectCategoriesAdminForm
+
+        form = ProjectCategoriesAdminForm(
+            data={
+                "title": "Architecture",
+                "slug": "architecture",
+                "page_h1": "  Архитектурные кейсы  ",
+                "seo_title": "  Архитектурные проекты  ",
+                "seo_description": "  Описание категории  ",
+                "seo_keywords": "  архитектура, проекты  ",
+                "seo_robots": "  noindex,nofollow  ",
+                "canonical_url": " https://example.com/projects/category/architecture/ ",
+            }
+        )
+
+        self.assertTrue(form.is_valid(), form.errors)
+        category = form.save()
+        self.assertEqual(category.page_h1, "Архитектурные кейсы")
+        self.assertEqual(category.seo_title, "Архитектурные проекты")
+        self.assertEqual(category.seo_description, "Описание категории")
+        self.assertEqual(category.seo_keywords, "архитектура, проекты")
+        self.assertEqual(category.seo_robots, "noindex,nofollow")
+        self.assertEqual(category.canonical_url, "https://example.com/projects/category/architecture/")
+
+
 class ProjectStaticGenerationSignalTests(TestCase):
     @override_settings(SITE_PUBLIC_BASE_URL="https://example.com")
     def test_static_html_is_generated_and_removed_on_unpublish(self):
@@ -680,6 +829,42 @@ class ProjectStaticGenerationSignalTests(TestCase):
                     category.delete()
 
                 self.assertFalse(category_target.exists())
+
+    @override_settings(SITE_PUBLIC_BASE_URL="https://example.com")
+    def test_category_seo_change_rebuilds_generated_category_page(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            with override_settings(GENERATED_HTML_PAGES_PATH=temp_dir):
+                with self.captureOnCommitCallbacks(execute=True):
+                    category = ProjectCategories.objects.create(title="Cat", slug="cat")
+
+                category_target = Path(temp_dir) / "projects" / "category" / category.slug / "index.html"
+                self.assertIn("<title>Cat | Проекты | Cultnova</title>", category_target.read_text(encoding="utf-8"))
+
+                with self.captureOnCommitCallbacks(execute=True):
+                    category.page_h1 = "Кейсы категории"
+                    category.seo_title = "Категория SEO"
+                    category.seo_description = "SEO описание категории."
+                    category.seo_keywords = "seo, category"
+                    category.seo_robots = "noindex,nofollow"
+                    category.canonical_url = "https://example.com/custom-category/"
+                    category.save(
+                        update_fields=[
+                            "page_h1",
+                            "seo_title",
+                            "seo_description",
+                            "seo_keywords",
+                            "seo_robots",
+                            "canonical_url",
+                        ]
+                    )
+
+                updated_html = category_target.read_text(encoding="utf-8")
+                self.assertIn("<title>Категория SEO | Cultnova</title>", updated_html)
+                self.assertIn('content="SEO описание категории."', updated_html)
+                self.assertIn('content="seo, category"', updated_html)
+                self.assertIn('content="noindex,nofollow"', updated_html)
+                self.assertIn('href="https://example.com/custom-category/"', updated_html)
+                self.assertIn(">Кейсы категории</h1>", updated_html)
 
     @override_settings(SITE_PUBLIC_BASE_URL="https://example.com")
     def test_new_category_is_added_to_root_and_existing_category_pages(self):

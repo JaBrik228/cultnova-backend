@@ -16,6 +16,7 @@ from blog.services.rich_text import (
 )
 from blog.widgets import JoditWidget
 from core.services.vk_cloud_storage import upload_media_to_vk_cloud
+from projects.services.project_listing import build_public_project_category_url
 from projects.services.project_rendering import build_public_project_url
 
 from .models import ProjectCategories, Projects, ProjectsContentBlock
@@ -25,6 +26,55 @@ def _trim(value):
     if isinstance(value, str):
         return value.strip()
     return value
+
+
+class ProjectCategoriesAdminForm(forms.ModelForm):
+    class Meta:
+        model = ProjectCategories
+        fields = "__all__"
+
+    def clean(self):
+        cleaned_data = super().clean()
+
+        for field_name in (
+            "page_h1",
+            "seo_title",
+            "seo_description",
+            "seo_keywords",
+            "seo_robots",
+            "canonical_url",
+        ):
+            value = cleaned_data.get(field_name)
+            if isinstance(value, str):
+                cleaned_data[field_name] = value.strip()
+
+        if not cleaned_data.get("seo_robots"):
+            cleaned_data["seo_robots"] = "index,follow"
+
+        return cleaned_data
+
+    def save(self, commit=True):
+        instance = super().save(commit=False)
+
+        for field_name in (
+            "page_h1",
+            "seo_title",
+            "seo_description",
+            "seo_keywords",
+            "seo_robots",
+            "canonical_url",
+        ):
+            value = self.cleaned_data.get(field_name)
+            if isinstance(value, str):
+                setattr(instance, field_name, value.strip())
+
+        if not instance.seo_robots:
+            instance.seo_robots = "index,follow"
+
+        if commit:
+            instance.save()
+
+        return instance
 
 
 class ProjectsAdminForm(forms.ModelForm):
@@ -208,9 +258,78 @@ class ContentBlockInline(admin.StackedInline):
 
 @admin.register(ProjectCategories)
 class ProjectCategoriesAdmin(admin.ModelAdmin):
-    list_display = ("title", "created_at")
-    search_fields = ("title", "slug")
+    form = ProjectCategoriesAdminForm
+    save_on_top = True
+    list_display = ("title", "slug", "created_at")
+    search_fields = ("title", "slug", "seo_title", "seo_description")
     prepopulated_fields = {"slug": ("title",)}
+    readonly_fields = ("category_public_url", "seo_snippet_preview", "created_at")
+    fieldsets = (
+        (
+            "Content",
+            {
+                "fields": ("title", "slug"),
+            },
+        ),
+        (
+            "SEO",
+            {
+                "fields": (
+                    "page_h1",
+                    "seo_title",
+                    "seo_description",
+                    "seo_keywords",
+                    "seo_robots",
+                    "canonical_url",
+                    "category_public_url",
+                    "seo_snippet_preview",
+                ),
+            },
+        ),
+        (
+            "System",
+            {
+                "fields": ("created_at",),
+                "classes": ("collapse",),
+            },
+        ),
+    )
+
+    def category_public_url(self, obj):
+        if not obj.pk:
+            return "Save category to generate URL."
+        url = build_public_project_category_url(obj.slug)
+        return format_html('<a href="{0}" target="_blank" rel="noopener noreferrer">{0}</a>', url)
+
+    category_public_url.short_description = "Public URL"
+
+    def seo_snippet_preview(self, obj):
+        category_title = (getattr(obj, "title", "") or "").strip()
+        title = ((obj.seo_title or "").strip() or f"{category_title} | Проекты" or "SEO title")
+        description = (
+            (obj.seo_description or "").strip()
+            or (f"Проекты Cultnova в категории «{category_title}»." if category_title else "")
+            or "SEO description"
+        )
+
+        if obj.pk and obj.slug:
+            url = (obj.canonical_url or "").strip() or build_public_project_category_url(obj.slug)
+        else:
+            base = (settings.SITE_PUBLIC_BASE_URL or "").rstrip("/")
+            url = f"{base}/projects/category/<slug>/" if base else "/projects/category/<slug>/"
+
+        return format_html(
+            '<div style="max-width: 680px;">'
+            '<div style="color:#1a0dab;font-size:20px;line-height:1.3;">{}</div>'
+            '<div style="color:#006621;font-size:14px;margin:4px 0;">{}</div>'
+            '<div style="color:#545454;font-size:14px;">{}</div>'
+            "</div>",
+            title,
+            url,
+            description,
+        )
+
+    seo_snippet_preview.short_description = "SEO snippet preview"
 
 
 @admin.register(Projects)

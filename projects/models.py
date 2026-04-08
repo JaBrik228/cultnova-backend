@@ -6,6 +6,12 @@ from core.models.base_item import BaseContentBlock, BaseContentItem
 class ProjectCategories(models.Model):
     title = models.CharField(max_length=100, verbose_name="Название")
     slug = models.SlugField(unique=True, verbose_name="Слаг")
+    page_h1 = models.CharField(max_length=255, blank=True, default="", verbose_name="Page H1")
+    seo_title = models.CharField(max_length=255, blank=True, default="", verbose_name="SEO title")
+    seo_description = models.CharField(max_length=320, blank=True, default="", verbose_name="SEO description")
+    seo_keywords = models.CharField(max_length=500, blank=True, default="", verbose_name="SEO keywords")
+    seo_robots = models.CharField(max_length=32, blank=True, default="index,follow", verbose_name="SEO robots")
+    canonical_url = models.URLField(max_length=1024, blank=True, default="", verbose_name="Canonical URL")
     created_at = models.DateTimeField(auto_now_add=True, verbose_name="Дата создания")
 
     class Meta:
