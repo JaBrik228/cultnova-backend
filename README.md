@@ -40,6 +40,12 @@ Generated output format:
 
 - `articles/<slug>/index.html` (public URL: `/articles/<slug>/`)
 
+## Press feed
+
+- The CMS now manages the "СМИ о нас" section through Django admin.
+- Public endpoint: `GET /api/press/`
+- The endpoint returns only published items in `sort_order` order, with `title`, `description`, and `url`.
+
 ## Projects static generation
 
 - Single project generation happens automatically by signals on project/media save/delete.
