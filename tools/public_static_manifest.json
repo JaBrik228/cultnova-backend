@@ -18,6 +18,16 @@
     },
     {
       "kind": "file",
+      "source": "static/css/projects.css",
+      "target": "css/projects.css"
+    },
+    {
+      "kind": "file",
+      "source": "static/css/simple-page.css",
+      "target": "css/simple-page.css"
+    },
+    {
+      "kind": "file",
       "source": "static/css/video-player.css",
       "target": "css/video-player.css"
     },
@@ -28,8 +38,18 @@
     },
     {
       "kind": "file",
+      "source": "static/js/projects-listing.js",
+      "target": "js/projects-listing.js"
+    },
+    {
+      "kind": "file",
       "source": "static/js/video-player.js",
       "target": "js/video-player.js"
+    },
+    {
+      "kind": "directory",
+      "source": "static/images/projects",
+      "target": "images/projects"
     },
     {
       "kind": "directory",

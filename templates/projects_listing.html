@@ -1,0 +1,298 @@
+<!doctype html>
+<html lang="ru">
+    <head>
+        <meta charset="UTF-8" />
+        <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+        <meta name="robots" content="{{ page.robots }}" />
+
+        <title>{{ page.title }} | Cultnova</title>
+        <meta name="description" content="{{ page.description }}" />
+
+        <link rel="icon" href="https://cultnova-media.hb.ru-msk.vkcloud-storage.ru/site-icons/favicon.svg" type="image/svg+xml" />
+        <link rel="canonical" href="{{ page.canonical }}" />
+
+        <link rel="preconnect" href="https://cms.cultnova.ru" crossorigin />
+        <link rel="dns-prefetch" href="//cms.cultnova.ru" />
+        <link rel="preconnect" href="https://cultnova-media.hb.ru-msk.vkcloud-storage.ru" crossorigin />
+        <link rel="dns-prefetch" href="//cultnova-media.hb.ru-msk.vkcloud-storage.ru" />
+        <link rel="preload" as="image" href="{{ page.hero_image }}" fetchpriority="high" />
+        {% if projects and projects.0.preview %}
+        <link rel="preload" as="image" href="{{ projects.0.preview }}" fetchpriority="high" />
+        {% endif %}
+
+        <meta property="og:type" content="website" />
+        <meta property="og:url" content="{{ page.url }}" />
+        <meta property="og:title" content="{{ page.title }} | Cultnova" />
+        <meta property="og:description" content="{{ page.description }}" />
+        {% if page.share_image %}
+        <meta property="og:image" content="{{ page.share_image }}" />
+        <meta property="og:image:alt" content="{{ page.hero_image_alt }}" />
+        {% endif %}
+
+        <meta name="twitter:card" content="summary_large_image" />
+        <meta name="twitter:title" content="{{ page.title }} | Cultnova" />
+        <meta name="twitter:description" content="{{ page.description }}" />
+        {% if page.share_image %}
+        <meta name="twitter:image" content="{{ page.share_image }}" />
+        <meta name="twitter:image:alt" content="{{ page.hero_image_alt }}" />
+        {% endif %}
+
+        {% if collection_json_ld %}
+        <script type="application/ld+json">
+            {{ collection_json_ld|safe }}
+        </script>
+        {% endif %}
+
+        <script type="text/javascript">
+            (function (m, e, t, r, i, k, a) {
+                m[i] =
+                    m[i] ||
+                    function () {
+                        (m[i].a = m[i].a || []).push(arguments);
+                    };
+                m[i].l = 1 * new Date();
+                for (var j = 0; j < document.scripts.length; j++) {
+                    if (document.scripts[j].src === r) {
+                        return;
+                    }
+                }
+                ((k = e.createElement(t)),
+                    (a = e.getElementsByTagName(t)[0]),
+                    (k.async = 1),
+                    (k.src = r),
+                    a.parentNode.insertBefore(k, a));
+            })(
+                window,
+                document,
+                "script",
+                "https://mc.yandex.ru/metrika/tag.js",
+                "ym",
+            );
+
+            ym(105343751, "init", {
+                clickmap: true,
+                trackLinks: true,
+                accurateTrackBounce: true,
+            });
+        </script>
+        <noscript
+            ><div>
+                <img
+                    src="https://mc.yandex.ru/watch/105343751"
+                    style="position: absolute; left: -9999px"
+                    alt="yandex"
+                /></div
+        ></noscript>
+
+        <link rel="stylesheet" href="/css/simple-page.css" />
+        <link rel="stylesheet" href="/css/projects.css?v=2026-04-08-1" />
+    </head>
+    <body
+        data-page="projects"
+        data-projects-endpoint="{{ projects_feed.endpoint }}"
+        data-projects-page-size="{{ projects_feed.page_size }}"
+        data-projects-current-page="{{ projects_feed.current_page }}"
+        data-projects-next-page="{{ projects_feed.next_page }}"
+        data-projects-has-next="{% if projects_feed.has_next %}1{% else %}0{% endif %}"
+    >
+        <div class="loader-wrap">
+            <span class="loader"></span>
+        </div>
+
+        {% include "partials/header.html" %}
+
+        <main class="projects-page">
+            <section class="projects" aria-labelledby="projectsTitle">
+                <div class="container">
+                    <nav class="breadcrumbs projects-breadcrumbs" itemscope itemtype="https://schema.org/BreadcrumbList">
+                        <ul class="breadcrumb-list">
+                            {% for breadcrumb in breadcrumbs %}
+                            <li
+                                class="breadcrumb-item"
+                                itemprop="itemListElement"
+                                itemscope
+                                itemtype="https://schema.org/ListItem"
+                            >
+                                <a href="{{ breadcrumb.url }}" itemprop="item">
+                                    <span itemprop="name"{% if not forloop.last %} style="color: #757575"{% endif %}
+                                        >{{ breadcrumb.title }}</span
+                                    >
+                                </a>
+                                <meta itemprop="position" content="{{ forloop.counter }}" />
+                            </li>
+                            {% if not forloop.last %}
+                            <span aria-hidden="true">
+                                <svg width="5" height="8" viewBox="0 0 5 8" fill="none" xmlns="http://www.w3.org/2000/svg">
+                                    <path
+                                        d="M3.06667 4L0 0.933333L0.933333 0L4.93333 4L0.933333 8L0 7.06667L3.06667 4Z"
+                                        fill="#757575"
+                                    />
+                                </svg>
+                            </span>
+                            {% endif %}
+                            {% endfor %}
+                        </ul>
+                    </nav>
+
+                    <div class="projects__header">
+                        <h1 class="title projects__title" id="projectsTitle">{{ page.heading }}</h1>
+                    </div>
+
+                    <div class="projects__hero">
+                        <img
+                            src="{{ page.hero_image }}"
+                            alt="{{ page.hero_image_alt }}"
+                            class="projects__hero-image projects__hero-image--desktop"
+                            width="1170"
+                            height="312"
+                            fetchpriority="high"
+                        />
+                        <img
+                            src="{{ page.hero_image_mobile }}"
+                            alt="{{ page.hero_image_alt }}"
+                            class="projects__hero-image projects__hero-image--mobile"
+                            loading="lazy"
+                        />
+                    </div>
+
+                    <div class="projects__tags" aria-label="Категории проектов">
+                        {% for category in categories %}
+                        <a
+                            href="{{ category.url }}"
+                            class="projects__tag{% if category.is_active %} active{% endif %}"
+                            {% if category.is_active %}aria-current="page"{% endif %}
+                        >
+                            {{ category.title }}
+                        </a>
+                        {% endfor %}
+                    </div>
+
+                    <div class="projects__status" id="projectsStatus" aria-live="polite"></div>
+                    <div class="projects__message" id="projectsMessage" hidden></div>
+
+                    {% if projects %}
+                    <div class="projects__feed" id="projectsFeed" aria-busy="false">
+                        {% for project in projects %}
+                        <article class="projects__card">
+                            <a href="{{ project.url }}" class="projects__card-link">
+                                <div class="projects__card-image">
+                                    {% if project.preview %}
+                                    <img
+                                        src="{{ project.preview }}"
+                                        class="projects__card-img"
+                                        alt="{{ project.preview_image_alt|default:project.title }}"
+                                        width="600"
+                                        height="440"
+                                        decoding="async"
+                                        loading="{% if forloop.first %}eager{% else %}lazy{% endif %}"
+                                        {% if forloop.first %}fetchpriority="high"{% else %}fetchpriority="low"{% endif %}
+                                    />
+                                    {% else %}
+                                    <div class="projects__card-image-fallback">
+                                        Изображение проекта временно недоступно
+                                    </div>
+                                    {% endif %}
+                                </div>
+
+                                <div class="projects__card-content">
+                                    {% if project.category_title %}
+                                    <span class="projects__card-category">{{ project.category_title }}</span>
+                                    {% endif %}
+
+                                    <h2 class="projects__card-title">{{ project.title }}</h2>
+
+                                    {% if project.excerpt %}
+                                    <p class="projects__card-excerpt">{{ project.excerpt }}</p>
+                                    {% endif %}
+                                </div>
+                            </a>
+                        </article>
+                        {% endfor %}
+                    </div>
+                    {% else %}
+                    <div class="projects__empty" id="projectsEmpty">
+                        <p class="projects__empty-title">{{ empty_state.title }}</p>
+                        <p class="projects__empty-copy">{{ empty_state.copy }}</p>
+                    </div>
+                    {% endif %}
+
+                    <div class="projects__actions" id="projectsActions">
+                        <button
+                            class="projects__load-more header-content__end__phone-second"
+                            id="projectsLoadMore"
+                            type="button"
+                            {% if not projects or not projects_feed.has_next %}hidden{% endif %}
+                        >
+                            Показать еще
+                        </button>
+                    </div>
+                </div>
+            </section>
+        </main>
+
+        <div class="background-black">{% include "partials/footer.html" %}</div>
+
+        {% include "partials/callback_popup.html" %}
+        {% include "partials/popup.html" %}
+
+        <button class="scroll-to-top" id="scrollToTop" aria-label="Наверх">
+            <svg width="80" height="80" viewBox="0 0 80 80" fill="none" xmlns="http://www.w3.org/2000/svg">
+                <g filter="url(#filter0_d_276_3781)">
+                    <path
+                        d="M8 38C8 20.3269 22.3269 6 40 6C57.6731 6 72 20.3269 72 38C72 55.6731 57.6731 70 40 70C22.3269 70 8 55.6731 8 38Z"
+                        fill="white"
+                        shape-rendering="crispEdges"
+                    />
+                    <mask
+                        id="mask0_276_3781"
+                        style="mask-type: alpha"
+                        maskUnits="userSpaceOnUse"
+                        x="24"
+                        y="22"
+                        width="32"
+                        height="32"
+                    >
+                        <rect x="24" y="22" width="32" height="32" fill="#D9D9D9" />
+                    </mask>
+                    <g mask="url(#mask0_276_3781)">
+                        <path
+                            d="M38.6666 48.6673V32.434L31.1999 39.9007L29.3333 38.0007L39.9999 27.334L50.6666 38.0007L48.7999 39.9007L41.3333 32.434V48.6673H38.6666Z"
+                            fill="#475EEA"
+                        />
+                    </g>
+                </g>
+                <defs>
+                    <filter
+                        id="filter0_d_276_3781"
+                        x="0"
+                        y="0"
+                        width="80"
+                        height="80"
+                        filterUnits="userSpaceOnUse"
+                        color-interpolation-filters="sRGB"
+                    >
+                        <feFlood flood-opacity="0" result="BackgroundImageFix" />
+                        <feColorMatrix
+                            in="SourceAlpha"
+                            type="matrix"
+                            values="0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 127 0"
+                            result="hardAlpha"
+                        />
+                        <feOffset dy="2" />
+                        <feGaussianBlur stdDeviation="4" />
+                        <feComposite in2="hardAlpha" operator="out" />
+                        <feColorMatrix
+                            type="matrix"
+                            values="0 0 0 0 0.133333 0 0 0 0 0.133333 0 0 0 0 0.133333 0 0 0 1 0"
+                        />
+                        <feBlend mode="normal" in2="BackgroundImageFix" result="effect1_dropShadow_276_3781" />
+                        <feBlend mode="normal" in="SourceGraphic" in2="effect1_dropShadow_276_3781" result="shape" />
+                    </filter>
+                </defs>
+            </svg>
+        </button>
+
+        <script src="/js/projects-listing.js?v=2026-04-08-1" defer></script>
+        <script src="/js/script.js"></script>
+    </body>
+</html>

@@ -17,7 +17,7 @@ def get_generated_pages_root() -> Path:
     return generated_root.resolve()
 
 
-def _sync_frontend_partials_if_configured():
+def sync_frontend_partials_if_configured():
     if not getattr(settings, "FRONTEND_PARTIALS_AUTO_SYNC", True):
         return
 
@@ -53,7 +53,7 @@ def build_item_detail_static_html(instance: BaseContentItem, template_name: str,
     """
     Generate static HTML and write it into the target directory.
     """
-    _sync_frontend_partials_if_configured()
+    sync_frontend_partials_if_configured()
     base_gen_root = str(get_generated_pages_root())
 
     if folder_name in {"article", "articles"}:

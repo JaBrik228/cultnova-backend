@@ -12,6 +12,11 @@ from django.urls import reverse
 from django.utils import timezone
 
 from projects.models import ProjectCategories, Projects, ProjectsContentBlock
+from projects.services.project_listing import (
+    PROJECTS_LISTING_PAGE_SIZE,
+    build_public_project_category_path,
+    build_public_projects_path,
+)
 from projects.services.project_rendering import build_project_render_context
 
 
@@ -150,6 +155,118 @@ class ProjectRenderingTests(TestCase):
         self.assertIn("CreativeWork", context["project_json_ld"])
 
 
+class ProjectsListingViewTests(TestCase):
+    def setUp(self):
+        self.museums = ProjectCategories.objects.create(title="Museums", slug="museums")
+        self.education = ProjectCategories.objects.create(title="Education", slug="education")
+        self.empty_category = ProjectCategories.objects.create(title="Empty", slug="empty")
+
+        self.first_project = Projects.objects.create(
+            title="Museum Alpha",
+            slug="museum-alpha",
+            category=self.museums,
+            customer_name="Client",
+            year=2025,
+            type="Type",
+            body_html="<p>Body</p>",
+            excerpt="Alpha excerpt",
+            preview_image="https://example.com/alpha.jpg",
+            preview_image_alt="Alpha alt",
+            seo_title="SEO",
+            seo_description="SEO",
+            is_published=True,
+        )
+        self.second_project = Projects.objects.create(
+            title="Museum Beta",
+            slug="museum-beta",
+            category=self.museums,
+            customer_name="Client",
+            year=2025,
+            type="Type",
+            body_html="<p>Body</p>",
+            excerpt="Beta excerpt",
+            preview_image="https://example.com/beta.jpg",
+            preview_image_alt="Beta alt",
+            seo_title="SEO",
+            seo_description="SEO",
+            is_published=True,
+        )
+        self.third_project = Projects.objects.create(
+            title="Education Gamma",
+            slug="education-gamma",
+            category=self.education,
+            customer_name="Client",
+            year=2025,
+            type="Type",
+            body_html="<p>Body</p>",
+            excerpt="Gamma excerpt",
+            preview_image="https://example.com/gamma.jpg",
+            preview_image_alt="Gamma alt",
+            seo_title="SEO",
+            seo_description="SEO",
+            is_published=True,
+        )
+        self.fourth_project = Projects.objects.create(
+            title="Education Delta",
+            slug="education-delta",
+            category=self.education,
+            customer_name="Client",
+            year=2025,
+            type="Type",
+            body_html="<p>Body</p>",
+            excerpt="Delta excerpt",
+            preview_image="https://example.com/delta.jpg",
+            preview_image_alt="Delta alt",
+            seo_title="SEO",
+            seo_description="SEO",
+            is_published=True,
+        )
+
+        now = timezone.now()
+        Projects.objects.filter(pk=self.first_project.pk).update(created_at=now - timedelta(minutes=4))
+        Projects.objects.filter(pk=self.second_project.pk).update(created_at=now - timedelta(minutes=3))
+        Projects.objects.filter(pk=self.third_project.pk).update(created_at=now - timedelta(minutes=2))
+        Projects.objects.filter(pk=self.fourth_project.pk).update(created_at=now - timedelta(minutes=1))
+
+    def test_projects_root_page_renders_first_batch_and_load_more_state(self):
+        response = self.client.get(reverse("projects:projects_list"))
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, 'data-projects-endpoint="https://cms.cultnova.ru/api/projects/"')
+        self.assertContains(response, f'data-projects-page-size="{PROJECTS_LISTING_PAGE_SIZE}"')
+        self.assertContains(response, "Education Delta")
+        self.assertContains(response, "Education Gamma")
+        self.assertContains(response, "Museum Beta")
+        self.assertNotContains(response, "Museum Alpha")
+        self.assertContains(response, 'aria-current="page"')
+        self.assertContains(response, "Показать еще")
+
+    def test_projects_category_page_activates_selected_filter_and_excludes_other_categories(self):
+        response = self.client.get(reverse("projects:projects_category_list", kwargs={"slug": self.museums.slug}))
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(
+            response,
+            f'data-projects-endpoint="https://cms.cultnova.ru/api/projects/category/{self.museums.slug}/"',
+        )
+        self.assertContains(response, f'href="{build_public_project_category_path(self.museums.slug)}"')
+        self.assertContains(response, 'aria-current="page"')
+        self.assertContains(response, "Museum Alpha")
+        self.assertContains(response, "Museum Beta")
+        self.assertNotContains(response, "Education Gamma")
+        self.assertNotContains(response, "Education Delta")
+
+    def test_empty_category_page_renders_empty_state(self):
+        response = self.client.get(reverse("projects:projects_category_list", kwargs={"slug": self.empty_category.slug}))
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(
+            response,
+            "В категории «Empty» пока нет опубликованных проектов.",
+        )
+        self.assertContains(response, 'id="projectsEmpty"')
+
+
 class ProjectApiTests(TestCase):
     def setUp(self):
         self.category = ProjectCategories.objects.create(title="Museums", slug="museums")
@@ -219,6 +336,8 @@ class ProjectApiTests(TestCase):
         self.assertEqual(item["slug"], self.project.slug)
         self.assertEqual(item["category_title"], self.category.title)
         self.assertEqual(item["preview"], "https://example.com/preview.jpg")
+        self.assertEqual(item["preview_image_alt"], "Preview alt")
+        self.assertEqual(item["excerpt"], "Excerpt")
         self.assertEqual(item["images"], [{"url": "https://example.com/image.jpg", "alt": "Alt"}])
         self.assertNotIn(self.hidden_project.slug, [entry["slug"] for entry in payload["data"]])
         self.assertNotIn("seo-closed-project", [entry["slug"] for entry in payload["data"]])
@@ -309,6 +428,21 @@ class ProjectApiTests(TestCase):
         self.assertEqual(payload_page_2["data"][0]["slug"], self.project.slug)
 
     def test_projects_by_category_filters_unpublished_and_returns_string_preview(self):
+        Projects.objects.create(
+            title="Category Noindex",
+            slug="category-noindex",
+            category=self.category,
+            customer_name="Client",
+            year=2025,
+            type="Type",
+            body_html="<p>Body</p>",
+            excerpt="Hidden by SEO",
+            seo_title="SEO",
+            seo_description="SEO",
+            seo_robots="noindex,follow",
+            is_published=True,
+        )
+
         response = self.client.get(f"/api/projects/{self.category.slug}")
 
         self.assertEqual(response.status_code, 200)
@@ -317,6 +451,16 @@ class ProjectApiTests(TestCase):
         self.assertEqual(payload["page"], 1)
         self.assertEqual(payload["data"][0]["slug"], self.project.slug)
         self.assertEqual(payload["data"][0]["preview"], "https://example.com/preview.jpg")
+        self.assertEqual(payload["data"][0]["preview_image_alt"], "Preview alt")
+        self.assertEqual(payload["data"][0]["category_title"], self.category.title)
+        self.assertEqual(payload["data"][0]["excerpt"], "Excerpt")
+
+    def test_explicit_category_endpoint_matches_legacy_category_payload(self):
+        legacy_response = self.client.get(f"/api/projects/{self.category.slug}")
+        explicit_response = self.client.get(f"/api/projects/category/{self.category.slug}/")
+
+        self.assertEqual(explicit_response.status_code, 200)
+        self.assertEqual(legacy_response.json(), explicit_response.json())
 
     def test_project_legacy_detail_endpoint_keeps_list_and_has_media_fields(self):
         response = self.client.get(f"/api/projects/detail/{self.project.slug}")
@@ -406,10 +550,21 @@ class ProjectStaticGenerationSignalTests(TestCase):
                     )
 
                 target = Path(temp_dir) / "projects" / project.slug / "index.html"
+                listing_target = Path(temp_dir) / "projects" / "index.html"
+                category_target = Path(temp_dir) / "projects" / "category" / category.slug / "index.html"
                 sitemap_path = Path(temp_dir) / "sitemap.xml"
                 self.assertTrue(target.exists())
+                self.assertTrue(listing_target.exists())
+                self.assertTrue(category_target.exists())
                 self.assertIn('data-page="project"', target.read_text(encoding="utf-8"))
+                self.assertIn('data-page="projects"', listing_target.read_text(encoding="utf-8"))
+                self.assertIn(category.title, category_target.read_text(encoding="utf-8"))
                 self.assertIn("/projects/static-project/", sitemap_path.read_text(encoding="utf-8"))
+                self.assertIn(build_public_projects_path(), sitemap_path.read_text(encoding="utf-8"))
+                self.assertIn(
+                    build_public_project_category_path(category.slug),
+                    sitemap_path.read_text(encoding="utf-8"),
+                )
 
                 with self.captureOnCommitCallbacks(execute=True):
                     project.is_published = False
@@ -490,3 +645,85 @@ class ProjectStaticGenerationSignalTests(TestCase):
                 self.assertGreater(project.updated_at, older_timestamp)
                 self.assertIn(project.updated_at.isoformat(timespec="seconds"), sitemap)
                 self.assertIn("/projects/updated-project/", sitemap)
+
+    @override_settings(SITE_PUBLIC_BASE_URL="https://example.com")
+    def test_category_slug_change_rebuilds_category_page(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            with override_settings(GENERATED_HTML_PAGES_PATH=temp_dir):
+                with self.captureOnCommitCallbacks(execute=True):
+                    category = ProjectCategories.objects.create(title="Cat", slug="old-cat")
+
+                old_target = Path(temp_dir) / "projects" / "category" / "old-cat" / "index.html"
+                self.assertTrue(old_target.exists())
+
+                with self.captureOnCommitCallbacks(execute=True):
+                    category.title = "Cat Updated"
+                    category.slug = "new-cat"
+                    category.save(update_fields=["title", "slug"])
+
+                new_target = Path(temp_dir) / "projects" / "category" / "new-cat" / "index.html"
+
+                self.assertFalse(old_target.exists())
+                self.assertTrue(new_target.exists())
+                self.assertIn("Cat Updated", new_target.read_text(encoding="utf-8"))
+
+    @override_settings(SITE_PUBLIC_BASE_URL="https://example.com")
+    def test_category_delete_removes_generated_category_page(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            with override_settings(GENERATED_HTML_PAGES_PATH=temp_dir):
+                with self.captureOnCommitCallbacks(execute=True):
+                    category = ProjectCategories.objects.create(title="Cat", slug="cat")
+                category_target = Path(temp_dir) / "projects" / "category" / category.slug / "index.html"
+                self.assertTrue(category_target.exists())
+
+                with self.captureOnCommitCallbacks(execute=True):
+                    category.delete()
+
+                self.assertFalse(category_target.exists())
+
+    @override_settings(SITE_PUBLIC_BASE_URL="https://example.com")
+    def test_new_category_is_added_to_root_and_existing_category_pages(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            with override_settings(GENERATED_HTML_PAGES_PATH=temp_dir):
+                with self.captureOnCommitCallbacks(execute=True):
+                    first_category = ProjectCategories.objects.create(title="Museums", slug="museums")
+                root_page = Path(temp_dir) / "projects" / "index.html"
+                first_category_page = Path(temp_dir) / "projects" / "category" / first_category.slug / "index.html"
+
+                with self.captureOnCommitCallbacks(execute=True):
+                    ProjectCategories.objects.create(title="Education", slug="education")
+
+                self.assertIn("Education", root_page.read_text(encoding="utf-8"))
+                self.assertIn("Education", first_category_page.read_text(encoding="utf-8"))
+
+    @override_settings(SITE_PUBLIC_BASE_URL="https://example.com")
+    def test_project_category_reassignment_updates_old_and_new_category_pages(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            with override_settings(GENERATED_HTML_PAGES_PATH=temp_dir):
+                old_category = ProjectCategories.objects.create(title="Museums", slug="museums")
+                new_category = ProjectCategories.objects.create(title="Education", slug="education")
+                with self.captureOnCommitCallbacks(execute=True):
+                    project = Projects.objects.create(
+                        title="Moved Project",
+                        slug="moved-project",
+                        category=old_category,
+                        customer_name="Client",
+                        year=2025,
+                        type="Type",
+                        body_html="<p>Body</p>",
+                        excerpt="Excerpt",
+                        seo_title="SEO",
+                        seo_description="SEO",
+                        is_published=True,
+                    )
+
+                old_category_page = Path(temp_dir) / "projects" / "category" / old_category.slug / "index.html"
+                new_category_page = Path(temp_dir) / "projects" / "category" / new_category.slug / "index.html"
+                self.assertIn("Moved Project", old_category_page.read_text(encoding="utf-8"))
+
+                with self.captureOnCommitCallbacks(execute=True):
+                    project.category = new_category
+                    project.save(update_fields=["category"])
+
+                self.assertNotIn("Moved Project", old_category_page.read_text(encoding="utf-8"))
+                self.assertIn("Moved Project", new_category_page.read_text(encoding="utf-8"))
