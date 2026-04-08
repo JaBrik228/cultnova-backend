@@ -1060,6 +1060,7 @@ try {
         "core",
         "cultnova",
         "projects",
+        "press",
         "static",
         "templates",
         "manage.py",
