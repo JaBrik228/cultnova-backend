@@ -1,12 +1,15 @@
 import argparse
 import os
 import sys
+import time
 from pathlib import Path
 
 import paramiko
 
 
 REQUIRED_SSH_KEYS = ("SSH_HOST", "SSH_USER", "SSH_PASS")
+SSH_CONNECT_TIMEOUT_SECONDS = 45
+SSH_CONNECT_ATTEMPTS = 4
 
 
 def resolve_repo_root() -> Path:
@@ -100,14 +103,32 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
 
 
 def run_remote_command(settings: dict[str, str], command: str) -> int:
-    client = paramiko.SSHClient()
-    client.set_missing_host_key_policy(paramiko.AutoAddPolicy())
-    client.connect(
-        hostname=settings["SSH_HOST"],
-        username=settings["SSH_USER"],
-        password=settings["SSH_PASS"],
-        timeout=20,
-    )
+    client: paramiko.SSHClient | None = None
+    last_error: Exception | None = None
+
+    for attempt in range(1, SSH_CONNECT_ATTEMPTS + 1):
+        client = paramiko.SSHClient()
+        client.set_missing_host_key_policy(paramiko.AutoAddPolicy())
+
+        try:
+            client.connect(
+                hostname=settings["SSH_HOST"],
+                username=settings["SSH_USER"],
+                password=settings["SSH_PASS"],
+                timeout=SSH_CONNECT_TIMEOUT_SECONDS,
+            )
+            break
+        except Exception as exc:
+            last_error = exc
+            client.close()
+            client = None
+            if attempt == SSH_CONNECT_ATTEMPTS:
+                raise
+            time.sleep(attempt)
+
+    if client is None:
+        raise RuntimeError(f"SSH connection failed: {last_error}")
+
     try:
         stdin, stdout, stderr = client.exec_command(command, get_pty=False)
         out = stdout.read().decode("utf-8", errors="replace")

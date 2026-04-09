@@ -22,6 +22,36 @@ from .project_rendering import build_public_project_path
 
 PROJECTS_LISTING_PAGE_SIZE = 3
 DEFAULT_PUBLIC_CMS_BASE_URL = "https://cms.cultnova.ru"
+PROJECTS_HERO_ALT = "Проекты Cultnova"
+PROJECTS_HERO_PRELOADS = (
+    {
+        "href": "/images/projects/projects-mobile-640.webp",
+        "media": "(max-width: 500px)",
+        "srcset": "/images/projects/projects-mobile-640.webp 640w, /images/projects/projects-mobile-1200.webp 1200w",
+        "sizes": "100vw",
+        "type": "image/webp",
+    },
+    {
+        "href": "/images/projects/projects-768.webp",
+        "media": "(min-width: 501px)",
+        "srcset": "/images/projects/projects-768.webp 768w, /images/projects/projects-1170.webp 1170w, /images/projects/projects-1600.webp 1600w",
+        "sizes": "(max-width: 1200px) calc(100vw - 48px), 1170px",
+        "type": "image/webp",
+    },
+)
+PROJECTS_HERO_SOURCES = (
+    {
+        "media": "(max-width: 500px)",
+        "srcset": "/images/projects/projects-mobile-640.webp 640w, /images/projects/projects-mobile-1200.webp 1200w",
+        "sizes": "100vw",
+        "type": "image/webp",
+    },
+    {
+        "srcset": "/images/projects/projects-768.webp 768w, /images/projects/projects-1170.webp 1170w, /images/projects/projects-1600.webp 1600w",
+        "sizes": "(max-width: 1200px) calc(100vw - 48px), 1170px",
+        "type": "image/webp",
+    },
+)
 
 
 def _normalize_text(value: str) -> str:
@@ -284,9 +314,12 @@ def build_projects_listing_context(
             "robots": page_robots,
             "heading": page_heading,
             "active_category_title": active_category.title if active_category else "",
-            "hero_image": "/images/projects/projects.png",
-            "hero_image_mobile": "/images/projects/projects-mobile.png",
-            "hero_image_alt": "Проекты Cultnova",
+            "hero_image": "/images/projects/projects-1170.webp",
+            "hero_preloads": list(PROJECTS_HERO_PRELOADS),
+            "hero_sources": list(PROJECTS_HERO_SOURCES),
+            "hero_fallback_srcset": PROJECTS_HERO_SOURCES[1]["srcset"],
+            "hero_sizes": "(max-width: 1200px) calc(100vw - 48px), 1170px",
+            "hero_image_alt": PROJECTS_HERO_ALT,
             "share_image": page_image or "",
         },
         "breadcrumbs": breadcrumbs,

@@ -959,6 +959,27 @@ try {
         Fail ("Missing file: {0}" -f $script:SshRunPath)
     }
 
+    Invoke-ProcessChecked -Exe "python" -ArgumentList @("tools/optimize_projects_hero.py") -Description "Building optimized /projects/ hero images"
+    $publicCssBuild = Invoke-ProcessCapture -Exe "python" -ArgumentList @("tools/build_public_css.py") -Description "Building public CSS entry assets"
+    if ($publicCssBuild.ExitCode -ne 0) {
+        $requiredPublicCssOutputs = @(
+            Join-Path $repoRoot "static\css\projects.css",
+            Join-Path $repoRoot "static\css\simple-page.css"
+        )
+        $missingPublicCssOutputs = @(
+            $requiredPublicCssOutputs |
+            Where-Object { -not (Test-Path -LiteralPath $_ -PathType Leaf) }
+        )
+
+        if ($missingPublicCssOutputs.Count -gt 0) {
+            Fail (
+                "Public CSS build failed and required built files are missing: {0}" -f
+                ($missingPublicCssOutputs -join ", ")
+            )
+        }
+
+        Write-Step "Public CSS build refresh failed; reusing existing built CSS outputs for deploy."
+    }
     $publicStaticManifest = Read-PublicStaticManifest -RepoRoot $repoRoot -ManifestPath $publicStaticManifestPath
     Write-Step (
         "Loaded public static manifest: {0} entries, {1} managed files" -f
@@ -1195,6 +1216,16 @@ try {
         foreach ($publicTarget in $publicSmokeTargets) {
             $publicUrl = "{0}/{1}" -f $remoteDomainSite, $publicTarget
             Ensure-Http200 -Url $publicUrl -Description "Smoke: public manifest asset" | Out-Null
+        }
+        $inlineCssSmokeUrls = @(
+            "{0}/css/projects.css" -f $remoteDomainSite,
+            "{0}/css/simple-page.css" -f $remoteDomainSite
+        )
+        foreach ($inlineCssUrl in $inlineCssSmokeUrls) {
+            $inlineCssResponse = Ensure-Http200 -Url $inlineCssUrl -Description "Smoke: inline CSS asset"
+            if ($inlineCssResponse.Content -match "(?i)@import\b") {
+                Fail ("Inline CSS smoke-check failed. @import is still present in {0}" -f $inlineCssUrl)
+            }
         }
         $acao = $corsResponse.Headers["Access-Control-Allow-Origin"]
         if ($acao -ne "https://cultnova.ru") {
