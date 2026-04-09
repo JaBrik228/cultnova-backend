@@ -18,10 +18,18 @@
         <link rel="dns-prefetch" href="//cms.cultnova.ru" />
         <link rel="preconnect" href="https://cultnova-media.hb.ru-msk.vkcloud-storage.ru" crossorigin />
         <link rel="dns-prefetch" href="//cultnova-media.hb.ru-msk.vkcloud-storage.ru" />
-        <link rel="preload" as="image" href="{{ page.hero_image }}" fetchpriority="high" />
-        {% if projects and projects.0.preview %}
-        <link rel="preload" as="image" href="{{ projects.0.preview }}" fetchpriority="high" />
-        {% endif %}
+        {% for preload in page.hero_preloads %}
+        <link
+            rel="preload"
+            as="image"
+            href="{{ preload.href }}"
+            media="{{ preload.media }}"
+            imagesrcset="{{ preload.srcset }}"
+            imagesizes="{{ preload.sizes }}"
+            type="{{ preload.type }}"
+            fetchpriority="high"
+        />
+        {% endfor %}
 
         <meta property="og:type" content="website" />
         <meta property="og:url" content="{{ page.canonical }}" />
@@ -46,38 +54,6 @@
         </script>
         {% endif %}
 
-        <script type="text/javascript">
-            (function (m, e, t, r, i, k, a) {
-                m[i] =
-                    m[i] ||
-                    function () {
-                        (m[i].a = m[i].a || []).push(arguments);
-                    };
-                m[i].l = 1 * new Date();
-                for (var j = 0; j < document.scripts.length; j++) {
-                    if (document.scripts[j].src === r) {
-                        return;
-                    }
-                }
-                ((k = e.createElement(t)),
-                    (a = e.getElementsByTagName(t)[0]),
-                    (k.async = 1),
-                    (k.src = r),
-                    a.parentNode.insertBefore(k, a));
-            })(
-                window,
-                document,
-                "script",
-                "https://mc.yandex.ru/metrika/tag.js",
-                "ym",
-            );
-
-            ym(105343751, "init", {
-                clickmap: true,
-                trackLinks: true,
-                accurateTrackBounce: true,
-            });
-        </script>
         <noscript
             ><div>
                 <img
@@ -87,8 +63,7 @@
                 /></div
         ></noscript>
 
-        <link rel="stylesheet" href="/css/simple-page.css" />
-        <link rel="stylesheet" href="/css/projects.css?v=2026-04-08-1" />
+        <link rel="stylesheet" href="/css/projects.css?v=2026-04-08-3" />
     </head>
     <body
         data-page="projects"
@@ -142,20 +117,28 @@
                     </div>
 
                     <div class="projects__hero">
-                        <img
-                            src="{{ page.hero_image }}"
-                            alt="{{ page.hero_image_alt }}"
-                            class="projects__hero-image projects__hero-image--desktop"
-                            width="1170"
-                            height="312"
-                            fetchpriority="high"
-                        />
-                        <img
-                            src="{{ page.hero_image_mobile }}"
-                            alt="{{ page.hero_image_alt }}"
-                            class="projects__hero-image projects__hero-image--mobile"
-                            loading="lazy"
-                        />
+                        <picture class="projects__hero-picture">
+                            {% for source in page.hero_sources %}
+                            <source
+                                {% if source.media %}media="{{ source.media }}"{% endif %}
+                                srcset="{{ source.srcset }}"
+                                sizes="{{ source.sizes }}"
+                                type="{{ source.type }}"
+                            />
+                            {% endfor %}
+                            <img
+                                src="{{ page.hero_image }}"
+                                srcset="{{ page.hero_fallback_srcset }}"
+                                sizes="{{ page.hero_sizes }}"
+                                alt="{{ page.hero_image_alt }}"
+                                class="projects__hero-image"
+                                width="1170"
+                                height="312"
+                                loading="eager"
+                                decoding="async"
+                                fetchpriority="high"
+                            />
+                        </picture>
                     </div>
 
                     <div class="projects__tags" aria-label="Категории проектов">
@@ -187,8 +170,8 @@
                                         width="600"
                                         height="440"
                                         decoding="async"
-                                        loading="{% if forloop.first %}eager{% else %}lazy{% endif %}"
-                                        {% if forloop.first %}fetchpriority="high"{% else %}fetchpriority="low"{% endif %}
+                                        loading="lazy"
+                                        fetchpriority="low"
                                     />
                                     {% else %}
                                     <div class="projects__card-image-fallback">
@@ -295,7 +278,74 @@
             </svg>
         </button>
 
+        <script src="/js/script.js" defer></script>
         <script src="/js/projects-listing.js?v=2026-04-08-1" defer></script>
-        <script src="/js/script.js"></script>
+        <script>
+            (function () {
+                var initialized = false;
+                var interactionBound = false;
+                var interactionEvents = ["pointerdown", "touchstart", "keydown"];
+
+                function loadMetrika() {
+                    if (initialized) {
+                        return;
+                    }
+                    initialized = true;
+
+                    if (interactionBound) {
+                        interactionEvents.forEach(function (eventName) {
+                            window.removeEventListener(eventName, loadMetrika, true);
+                        });
+                    }
+
+                    (function (m, e, t, r, i, k, a) {
+                        m[i] =
+                            m[i] ||
+                            function () {
+                                (m[i].a = m[i].a || []).push(arguments);
+                            };
+                        m[i].l = 1 * new Date();
+                        for (var j = 0; j < document.scripts.length; j++) {
+                            if (document.scripts[j].src === r) {
+                                return;
+                            }
+                        }
+                        ((k = e.createElement(t)),
+                            (a = e.getElementsByTagName(t)[0]),
+                            (k.async = 1),
+                            (k.src = r),
+                            a.parentNode.insertBefore(k, a));
+                    })(
+                        window,
+                        document,
+                        "script",
+                        "https://mc.yandex.ru/metrika/tag.js",
+                        "ym",
+                    );
+
+                    ym(105343751, "init", {
+                        clickmap: true,
+                        trackLinks: true,
+                        accurateTrackBounce: true,
+                    });
+                }
+
+                interactionEvents.forEach(function (eventName) {
+                    interactionBound = true;
+                    window.addEventListener(eventName, loadMetrika, {
+                        once: true,
+                        passive: true,
+                        capture: true,
+                    });
+                });
+
+                if (typeof window.requestIdleCallback === "function") {
+                    window.requestIdleCallback(loadMetrika, { timeout: 2500 });
+                    return;
+                }
+
+                window.setTimeout(loadMetrika, 2500);
+            })();
+        </script>
     </body>
 </html>

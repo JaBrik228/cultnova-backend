@@ -331,6 +331,32 @@ class ProjectsListingViewTests(TestCase):
         self.assertIn('<meta name="robots" content="index,follow" />', html)
         self.assertIn(">Проекты</h1>", html)
 
+    def test_projects_root_page_uses_single_combined_stylesheet(self):
+        response = self.client.get(reverse("projects:projects_list"))
+
+        self.assertEqual(response.status_code, 200)
+        html = response.content.decode("utf-8")
+        self.assertIn('/css/projects.css?v=2026-04-08-3', html)
+        self.assertNotIn("/css/simple-page.css", html)
+        self.assertEqual(html.count('rel="stylesheet"'), 1)
+
+    def test_projects_root_page_uses_responsive_hero_assets_and_deferred_scripts(self):
+        response = self.client.get(reverse("projects:projects_list"))
+
+        self.assertEqual(response.status_code, 200)
+        html = response.content.decode("utf-8")
+        self.assertIn('/images/projects/projects-mobile-640.webp', html)
+        self.assertIn('/images/projects/projects-mobile-1200.webp', html)
+        self.assertIn('/images/projects/projects-768.webp', html)
+        self.assertIn('/images/projects/projects-1170.webp', html)
+        self.assertIn('/images/projects/projects-1600.webp', html)
+        self.assertIn('class="projects__hero-picture"', html)
+        self.assertNotIn('href="https://example.com/delta.jpg"', html)
+        self.assertIn('<script src="/js/script.js" defer></script>', html)
+        self.assertIn('<script src="/js/projects-listing.js?v=2026-04-08-1" defer></script>', html)
+        self.assertIn("requestIdleCallback", html)
+        self.assertIn("https://mc.yandex.ru/metrika/tag.js", html)
+
     def test_empty_category_page_renders_empty_state(self):
         response = self.client.get(reverse("projects:projects_category_list", kwargs={"slug": self.empty_category.slug}))
 
