@@ -5,6 +5,7 @@ import os
 import shutil
 from pathlib import Path
 from tempfile import NamedTemporaryFile
+from urllib.parse import urlsplit
 
 from django.conf import settings
 from django.core.paginator import Paginator
@@ -60,6 +61,24 @@ def _normalize_text(value: str) -> str:
     return value.strip()
 
 
+def _build_public_url(path: str) -> str:
+    normalized_path = _normalize_text(path)
+    if not normalized_path:
+        return ""
+
+    if urlsplit(normalized_path).scheme:
+        return normalized_path
+
+    base_url = (settings.SITE_PUBLIC_BASE_URL or "").rstrip("/")
+    if not base_url:
+        return normalized_path
+
+    if normalized_path.startswith("/"):
+        return f"{base_url}{normalized_path}"
+
+    return f"{base_url}/{normalized_path}"
+
+
 def _get_public_cms_base_url() -> str:
     return getattr(settings, "CMS_PUBLIC_BASE_URL", DEFAULT_PUBLIC_CMS_BASE_URL).rstrip("/")
 
@@ -69,11 +88,7 @@ def build_public_projects_path() -> str:
 
 
 def build_public_projects_url() -> str:
-    path = build_public_projects_path()
-    base = (settings.SITE_PUBLIC_BASE_URL or "").rstrip("/")
-    if base:
-        return f"{base}{path}"
-    return path
+    return _build_public_url(build_public_projects_path())
 
 
 def build_public_project_category_path(slug: str) -> str:
@@ -81,11 +96,7 @@ def build_public_project_category_path(slug: str) -> str:
 
 
 def build_public_project_category_url(slug: str) -> str:
-    path = build_public_project_category_path(slug)
-    base = (settings.SITE_PUBLIC_BASE_URL or "").rstrip("/")
-    if base:
-        return f"{base}{path}"
-    return path
+    return _build_public_url(build_public_project_category_path(slug))
 
 
 def build_public_projects_api_url(category_slug: str | None = None) -> str:
@@ -208,19 +219,186 @@ def _build_projects_collection_json_ld(
     title: str,
     description: str,
     canonical_url: str,
+    hero_image: str,
+    breadcrumbs: list[dict[str, str]],
+    projects: list[dict[str, object]],
 ) -> str:
-    payload = {
-        "@context": "https://schema.org",
+    site_url = (settings.SITE_PUBLIC_BASE_URL or "").rstrip("/")
+    if not site_url:
+        parsed_canonical = urlsplit(canonical_url)
+        if parsed_canonical.scheme and parsed_canonical.netloc:
+            site_url = f"{parsed_canonical.scheme}://{parsed_canonical.netloc}"
+        else:
+            site_url = canonical_url.rstrip("/")
+    organization_id = f"{site_url}/#organization"
+    website_id = f"{site_url}/#website"
+    webpage_id = f"{canonical_url}#webpage"
+    breadcrumbs_id = f"{canonical_url}#breadcrumbs"
+    item_list_id = f"{canonical_url}#item-list"
+
+    breadcrumb_items = []
+    for position, breadcrumb in enumerate(breadcrumbs, start=1):
+        breadcrumb_title = _normalize_text(breadcrumb.get("title", ""))
+        breadcrumb_url = _build_public_url(breadcrumb.get("url", ""))
+
+        if not breadcrumb_title or not breadcrumb_url:
+            continue
+
+        breadcrumb_items.append(
+            {
+                "@type": "ListItem",
+                "position": position,
+                "name": breadcrumb_title,
+                "item": breadcrumb_url,
+            }
+        )
+
+    item_list_elements = []
+    for position, project in enumerate(projects, start=1):
+        slug = _normalize_text(str(project.get("slug") or ""))
+        project_title = _normalize_text(str(project.get("title") or ""))
+        project_url = _build_public_url(build_public_project_path(slug))
+
+        if not slug or not project_title or not project_url:
+            continue
+
+        item = {
+            "@type": "CreativeWork",
+            "@id": project_url,
+            "name": project_title,
+            "url": project_url,
+        }
+
+        description_value = _normalize_text(str(project.get("excerpt") or ""))
+        if description_value:
+            item["description"] = description_value
+
+        preview_image = _normalize_text(str(project.get("preview") or ""))
+        if preview_image:
+            item["image"] = preview_image
+
+        item_list_elements.append(
+            {
+                "@type": "ListItem",
+                "position": position,
+                "item": item,
+            }
+        )
+
+    page_node: dict[str, object] = {
         "@type": ["WebPage", "CollectionPage"],
+        "@id": webpage_id,
         "name": title,
         "description": description,
         "url": canonical_url,
         "mainEntityOfPage": canonical_url,
+        "inLanguage": "ru-RU",
         "isPartOf": {
-            "@type": "WebSite",
-            "name": "Cultnova",
-            "url": (settings.SITE_PUBLIC_BASE_URL or "").rstrip("/") or canonical_url,
+            "@id": website_id,
         },
+        "about": {
+            "@id": organization_id,
+        },
+        "publisher": {
+            "@id": organization_id,
+        },
+        "primaryImageOfPage": {
+            "@type": "ImageObject",
+            "url": _build_public_url(hero_image),
+        },
+        "breadcrumb": {
+            "@id": breadcrumbs_id,
+        },
+    }
+
+    payload_graph: list[dict[str, object]] = [
+        {
+            "@type": "Organization",
+            "@id": organization_id,
+            "name": "Cultnova",
+            "alternateName": "cultivating innovation",
+            "url": _build_public_url("/"),
+            "description": "Cultnova проектирует музеи, выставки и интерактивные пространства.",
+            "email": "info@cultnova.ru",
+            "telephone": "+7 (921) 894-67-34",
+            "sameAs": [
+                "https://www.linkedin.com/company/106256344",
+            ],
+            "logo": {
+                "@type": "ImageObject",
+                "@id": f"{site_url}/#logo",
+                "url": "https://cultnova-media.hb.ru-msk.vkcloud-storage.ru/site-icons/logo.svg",
+                "contentUrl": "https://cultnova-media.hb.ru-msk.vkcloud-storage.ru/site-icons/logo.svg",
+                "thumbnailUrl": "https://cultnova-media.hb.ru-msk.vkcloud-storage.ru/site-icons/favicon.svg",
+                "caption": "Cultnova",
+            },
+            "address": {
+                "@type": "PostalAddress",
+                "postalCode": "195267",
+                "addressCountry": "RU",
+                "addressRegion": "Санкт-Петербург",
+                "addressLocality": "Санкт-Петербург",
+                "streetAddress": "Суздальский пр-кт, 105к1",
+            },
+            "contactPoint": [
+                {
+                    "@type": "ContactPoint",
+                    "contactType": "customer support",
+                    "telephone": "+7 (921) 894-67-34",
+                    "email": "info@cultnova.ru",
+                    "availableLanguage": ["Russian"],
+                    "areaServed": "RU",
+                    "hoursAvailable": {
+                        "@type": "OpeningHoursSpecification",
+                        "dayOfWeek": [
+                            "https://schema.org/Monday",
+                            "https://schema.org/Tuesday",
+                            "https://schema.org/Wednesday",
+                            "https://schema.org/Thursday",
+                            "https://schema.org/Friday",
+                        ],
+                        "opens": "09:00",
+                        "closes": "18:00",
+                    },
+                }
+            ],
+        },
+        {
+            "@type": "WebSite",
+            "@id": website_id,
+            "url": _build_public_url("/"),
+            "name": "Cultnova",
+            "alternateName": "cultivating innovation",
+            "inLanguage": "ru-RU",
+            "publisher": {
+                "@id": organization_id,
+            },
+        },
+        page_node,
+        {
+            "@type": "BreadcrumbList",
+            "@id": breadcrumbs_id,
+            "itemListElement": breadcrumb_items,
+        },
+    ]
+
+    if item_list_elements:
+        payload_graph.append(
+            {
+                "@type": "ItemList",
+                "@id": item_list_id,
+                "itemListOrder": "https://schema.org/ItemListOrderDescending",
+                "numberOfItems": len(item_list_elements),
+                "itemListElement": item_list_elements,
+            }
+        )
+        page_node["mainEntity"] = {
+            "@id": item_list_id,
+        }
+
+    payload = {
+        "@context": "https://schema.org",
+        "@graph": payload_graph,
     }
     return mark_safe(json.dumps(payload, ensure_ascii=False))
 
@@ -334,6 +512,9 @@ def build_projects_listing_context(
             title=page_title,
             description=page_description,
             canonical_url=page_canonical,
+            hero_image="/images/projects/projects-1170.webp",
+            breadcrumbs=breadcrumbs,
+            projects=projects,
         ),
     }
 
