@@ -335,6 +335,47 @@ class HtmlSitemapServiceTests(SimpleTestCase):
                 self.assertNotIn("/noindex-page/", all_paths)
 
     @override_settings(SITE_PUBLIC_BASE_URL="https://example.com")
+    def test_build_html_sitemap_prefers_h1_and_keeps_home_fixed(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            with override_settings(GENERATED_HTML_PAGES_PATH=temp_dir):
+                root = Path(temp_dir)
+                self._write_sitemap_xml(
+                    root / "sitemap.xml",
+                    [
+                        "https://example.com/",
+                        "https://example.com/articles/live-article/",
+                        "https://example.com/about/",
+                    ],
+                )
+                self._write_titled_page(
+                    root / "index.html",
+                    "Домашняя | Cultnova",
+                    robots="index,follow",
+                    h1="Заголовок главной",
+                )
+                self._write_titled_page(
+                    root / "articles" / "live-article" / "index.html",
+                    "Статья SEO | Cultnova",
+                    robots="index,follow",
+                    h1="H1 статьи",
+                )
+                self._write_titled_page(
+                    root / "about" / "index.html",
+                    "О компании | Cultnova",
+                    robots="index,follow",
+                )
+
+                sections = build_html_sitemap()
+                section_map = {section.key: section for section in sections}
+
+                self.assertEqual([link.path for link in section_map["main"].links], ["/"])
+                self.assertEqual(section_map["main"].links[0].title, "ГЛАВНАЯ СТРАНИЦА")
+                self.assertEqual([link.path for link in section_map["articles"].links], ["/articles/live-article/"])
+                self.assertEqual(section_map["articles"].links[0].title, "H1 статьи")
+                self.assertEqual([link.path for link in section_map["info"].links], ["/about/"])
+                self.assertEqual(section_map["info"].links[0].title, "О компании")
+
+    @override_settings(SITE_PUBLIC_BASE_URL="https://example.com")
     def test_build_html_sitemap_raises_when_xml_missing(self):
         with tempfile.TemporaryDirectory() as temp_dir:
             with override_settings(GENERATED_HTML_PAGES_PATH=temp_dir):
@@ -394,14 +435,18 @@ class HtmlSitemapServiceTests(SimpleTestCase):
         lines.append("</urlset>")
         target_path.write_text("\n".join(lines), encoding="utf-8")
 
-    def _write_titled_page(self, target_path: Path, title: str, robots: str):
+    def _write_titled_page(self, target_path: Path, title: str, robots: str, h1: str | None = None):
+        body = "<body>Page</body>"
+        if h1 is not None:
+            body = f"<body><h1>{h1}</h1>Page</body>"
+
         self._write_html(
             target_path,
             (
                 "<html><head>"
                 f'<meta name="robots" content="{robots}">'
                 f"<title>{title}</title>"
-                "</head><body>Page</body></html>"
+                f"</head>{body}</html>"
             ),
         )
 

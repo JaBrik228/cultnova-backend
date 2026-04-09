@@ -94,16 +94,27 @@ class _PageMetaParser(HTMLParser):
         super().__init__()
         self._inside_title = False
         self._title_parts: list[str] = []
+        self._inside_h1 = False
+        self._h1_parts: list[str] = []
+        self._h1_found = False
         self.robots_content = ""
 
     @property
     def title(self) -> str:
         return "".join(self._title_parts).strip()
 
+    @property
+    def h1(self) -> str:
+        return "".join(self._h1_parts).strip()
+
     def handle_starttag(self, tag, attrs):
         tag_name = tag.lower()
         if tag_name == "title":
             self._inside_title = True
+            return
+
+        if tag_name == "h1" and not self._h1_found:
+            self._inside_h1 = True
             return
 
         if tag_name != "meta":
@@ -120,12 +131,18 @@ class _PageMetaParser(HTMLParser):
         self.robots_content = normalized_attrs.get("content", "").strip()
 
     def handle_endtag(self, tag):
-        if tag.lower() == "title":
+        tag_name = tag.lower()
+        if tag_name == "title":
             self._inside_title = False
+        elif tag_name == "h1":
+            self._inside_h1 = False
+            self._h1_found = True
 
     def handle_data(self, data):
         if self._inside_title:
             self._title_parts.append(data)
+        if self._inside_h1:
+            self._h1_parts.append(data)
 
 
 def build_html_sitemap() -> tuple[HtmlSitemapSection, ...]:
@@ -200,7 +217,7 @@ def _iter_sitemap_links(root: ET.Element, generated_root: Path):
         if page_meta and _is_noindex(page_meta.robots_content):
             continue
 
-        title = "ГЛАВНАЯ СТРАНИЦА" if public_path == "/" else _normalize_title(page_meta.title if page_meta else "")
+        title = _resolve_link_title(public_path, page_meta)
         yield HtmlSitemapLink(
             path=public_path,
             url=loc,
@@ -243,6 +260,19 @@ def _normalize_title(title: str) -> str:
     if normalized.endswith("| Cultnova"):
         normalized = normalized[: -len("| Cultnova")].strip()
     return normalized
+
+
+def _resolve_link_title(public_path: str, page_meta: _PageMetaParser | None) -> str:
+    if public_path == "/":
+        return "ГЛАВНАЯ СТРАНИЦА"
+
+    if not page_meta:
+        return ""
+
+    if page_meta.h1:
+        return page_meta.h1
+
+    return _normalize_title(page_meta.title)
 
 
 def _fallback_title_from_path(public_path: str) -> str:
