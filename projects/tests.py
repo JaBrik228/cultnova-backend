@@ -1,6 +1,6 @@
 ﻿import tempfile
 from pathlib import Path
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone as dt_timezone
 from unittest.mock import patch
 
 from django.contrib.auth import get_user_model
@@ -12,6 +12,10 @@ from django.urls import reverse
 from django.utils import timezone
 
 from projects.models import ProjectCategories, Projects, ProjectsContentBlock
+from projects.services.project_category_seo import (
+    CURRENT_YEAR_TOKEN,
+    get_project_category_current_year,
+)
 from projects.services.project_listing import (
     PROJECTS_LISTING_PAGE_SIZE,
     build_public_project_category_path,
@@ -112,6 +116,12 @@ class ProjectCategorySeoMigrationTests(MigrationTestCase):
         self.assertEqual(category.seo_keywords, "")
         self.assertEqual(category.seo_robots, "noindex,nofollow")
         self.assertEqual(category.canonical_url, "")
+
+
+class ProjectCategoryCurrentYearHelperTests(TestCase):
+    def test_current_year_uses_moscow_timezone(self):
+        boundary_moment = datetime(2025, 12, 31, 21, 30, tzinfo=dt_timezone.utc)
+        self.assertEqual(get_project_category_current_year(now=boundary_moment), 2026)
 
 
 class ProjectRenderingTests(TestCase):
@@ -308,6 +318,35 @@ class ProjectsListingViewTests(TestCase):
         self.assertIn(">Музеи и выставочные кейсы</h1>", html)
         self.assertIn('"mainEntityOfPage": "https://example.com/custom-category/"', html)
 
+    def test_projects_category_page_resolves_current_year_token_in_supported_fields(self):
+        current_year = get_project_category_current_year()
+        self.museums.page_h1 = f"Кейсы {CURRENT_YEAR_TOKEN}"
+        self.museums.seo_title = f"Музейные проекты {CURRENT_YEAR_TOKEN}"
+        self.museums.seo_description = f"Подборка музейных проектов Cultnova за {CURRENT_YEAR_TOKEN}."
+        self.museums.seo_keywords = f"музеи, проекты, {CURRENT_YEAR_TOKEN}"
+        self.museums.save(
+            update_fields=[
+                "page_h1",
+                "seo_title",
+                "seo_description",
+                "seo_keywords",
+            ]
+        )
+
+        response = self.client.get(reverse("projects:projects_category_list", kwargs={"slug": self.museums.slug}))
+
+        self.assertEqual(response.status_code, 200)
+        html = response.content.decode("utf-8")
+        self.assertIn(f"<title>Музейные проекты {current_year} | Cultnova</title>", html)
+        self.assertIn(
+            f'<meta name="description" content="Подборка музейных проектов Cultnova за {current_year}." />',
+            html,
+        )
+        self.assertIn(f'<meta name="keywords" content="музеи, проекты, {current_year}" />', html)
+        self.assertIn(f">Кейсы {current_year}</h1>", html)
+        self.assertIn(f'"description": "Подборка музейных проектов Cultnova за {current_year}."', html)
+        self.assertNotIn(CURRENT_YEAR_TOKEN, html)
+
     def test_projects_category_page_uses_fallback_seo_and_default_h1_when_fields_are_empty(self):
         response = self.client.get(reverse("projects:projects_category_list", kwargs={"slug": self.museums.slug}))
 
@@ -329,6 +368,26 @@ class ProjectsListingViewTests(TestCase):
         self.assertIn('<meta name="description" content="Проекты компании Cultnova." />', html)
         self.assertNotIn('<meta name="keywords"', html)
         self.assertIn('<meta name="robots" content="index,follow" />', html)
+        self.assertIn(">Проекты</h1>", html)
+
+    def test_projects_root_page_ignores_current_year_token_from_category_seo(self):
+        self.museums.page_h1 = f"Кейсы {CURRENT_YEAR_TOKEN}"
+        self.museums.seo_title = f"Музейные проекты {CURRENT_YEAR_TOKEN}"
+        self.museums.seo_description = f"Подборка музейных проектов Cultnova за {CURRENT_YEAR_TOKEN}."
+        self.museums.save(
+            update_fields=[
+                "page_h1",
+                "seo_title",
+                "seo_description",
+            ]
+        )
+
+        response = self.client.get(reverse("projects:projects_list"))
+
+        self.assertEqual(response.status_code, 200)
+        html = response.content.decode("utf-8")
+        self.assertIn("<title>Проекты | Cultnova</title>", html)
+        self.assertIn('<meta name="description" content="Проекты компании Cultnova." />', html)
         self.assertIn(">Проекты</h1>", html)
 
     def test_projects_root_page_uses_single_combined_stylesheet(self):
@@ -652,6 +711,22 @@ class ProjectCategoryAdminTests(TestCase):
         self.assertContains(response, 'name="canonical_url"')
         self.assertContains(response, "Public URL")
         self.assertContains(response, "SEO snippet preview")
+        self.assertContains(response, "Переменная года")
+        self.assertContains(response, CURRENT_YEAR_TOKEN)
+        self.assertContains(response, "Текущий год считается по Москве.")
+
+    def test_category_admin_preview_resolves_current_year_token(self):
+        current_year = get_project_category_current_year()
+        self.category.seo_title = f"Проекты музеев {CURRENT_YEAR_TOKEN}"
+        self.category.seo_description = f"Категория проектов за {CURRENT_YEAR_TOKEN}."
+        self.category.save(update_fields=["seo_title", "seo_description"])
+
+        self.client.force_login(self.user)
+        response = self.client.get(reverse("admin:projects_projectcategories_change", args=[self.category.pk]))
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, f"Проекты музеев {current_year}")
+        self.assertContains(response, f"Категория проектов за {current_year}.")
 
     def test_category_admin_form_allows_blank_seo_fields(self):
         from projects.admin import ProjectCategoriesAdminForm
@@ -891,6 +966,30 @@ class ProjectStaticGenerationSignalTests(TestCase):
                 self.assertIn('content="noindex,nofollow"', updated_html)
                 self.assertIn('href="https://example.com/custom-category/"', updated_html)
                 self.assertIn(">Кейсы категории</h1>", updated_html)
+
+    @override_settings(SITE_PUBLIC_BASE_URL="https://example.com")
+    def test_category_current_year_token_is_resolved_in_generated_html(self):
+        current_year = get_project_category_current_year()
+        with tempfile.TemporaryDirectory() as temp_dir:
+            with override_settings(GENERATED_HTML_PAGES_PATH=temp_dir):
+                with self.captureOnCommitCallbacks(execute=True):
+                    category = ProjectCategories.objects.create(
+                        title="Cat",
+                        slug="cat",
+                        page_h1=f"Кейсы {CURRENT_YEAR_TOKEN}",
+                        seo_title=f"Категория {CURRENT_YEAR_TOKEN}",
+                        seo_description=f"SEO описание {CURRENT_YEAR_TOKEN}.",
+                        seo_keywords=f"seo, {CURRENT_YEAR_TOKEN}",
+                    )
+
+                category_target = Path(temp_dir) / "projects" / "category" / category.slug / "index.html"
+                html = category_target.read_text(encoding="utf-8")
+
+                self.assertIn(f"<title>Категория {current_year} | Cultnova</title>", html)
+                self.assertIn(f'content="SEO описание {current_year}."', html)
+                self.assertIn(f'content="seo, {current_year}"', html)
+                self.assertIn(f">Кейсы {current_year}</h1>", html)
+                self.assertNotIn(CURRENT_YEAR_TOKEN, html)
 
     @override_settings(SITE_PUBLIC_BASE_URL="https://example.com")
     def test_new_category_is_added_to_root_and_existing_category_pages(self):

@@ -18,6 +18,7 @@ from core.services.build_item_html import (
 )
 
 from ..models import ProjectCategories, Projects, ProjectsContentBlock
+from .project_category_seo import get_resolved_project_category_seo_fields
 from .project_rendering import build_public_project_path
 
 PROJECTS_LISTING_PAGE_SIZE = 3
@@ -257,15 +258,16 @@ def build_projects_listing_context(
             {"title": "Проекты", "url": build_public_projects_path()},
         ]
     else:
-        page_title = _normalize_text(active_category.seo_title) or f"{active_category.title} | Проекты"
-        page_description = _normalize_text(active_category.seo_description) or (
+        category_seo_fields = get_resolved_project_category_seo_fields(active_category)
+        page_title = _normalize_text(category_seo_fields["seo_title"]) or f"{active_category.title} | Проекты"
+        page_description = _normalize_text(category_seo_fields["seo_description"]) or (
             f"Проекты Cultnova в категории «{active_category.title}»."
         )
-        page_keywords = _normalize_text(active_category.seo_keywords)
+        page_keywords = _normalize_text(category_seo_fields["seo_keywords"])
         page_robots = _normalize_text(active_category.seo_robots) or "index,follow"
         page_url = build_public_project_category_url(active_category.slug)
         page_canonical = _normalize_text(active_category.canonical_url) or page_url
-        page_heading = _normalize_text(active_category.page_h1) or "Проекты"
+        page_heading = _normalize_text(category_seo_fields["page_h1"]) or "Проекты"
         page_path = build_public_project_category_path(active_category.slug)
         api_endpoint = build_public_projects_api_url(active_category.slug)
         empty_title = f"В категории «{active_category.title}» пока нет опубликованных проектов."
