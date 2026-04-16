@@ -1,4 +1,9 @@
 (function () {
+    var PROJECTS_PAGE = "projects";
+    var SHELL_SELECTOR = "#projectsListingShell";
+    var CATEGORY_TAGS_SELECTOR = ".projects__tags";
+    var pendingCategoryNavigationUrl = "";
+
     function parseInteger(value, fallback) {
         var parsed = Number.parseInt(value, 10);
         return Number.isFinite(parsed) ? parsed : fallback;
@@ -14,21 +19,92 @@
         return error;
     }
 
-    function ProjectsListingController() {
-        if (document.body?.dataset.page !== "projects") {
-            return;
+    function isProjectsPage() {
+        return document.body?.dataset.page === PROJECTS_PAGE;
+    }
+
+    function isElement(value) {
+        return typeof Element !== "undefined" && value instanceof Element;
+    }
+
+    function getProjectsShell() {
+        if (!isProjectsPage()) {
+            return null;
         }
 
-        this.endpoint = document.body.dataset.projectsEndpoint || "";
-        this.pageSize = parseInteger(document.body.dataset.projectsPageSize, 3);
-        this.feedElement = document.getElementById("projectsFeed");
-        this.messageElement = document.getElementById("projectsMessage");
-        this.statusElement = document.getElementById("projectsStatus");
-        this.loadMoreButton = document.getElementById("projectsLoadMore");
+        return document.querySelector(SHELL_SELECTOR);
+    }
+
+    function syncDocumentTitle(shellElement) {
+        var nextTitle = shellElement?.dataset.pageTitle;
+        if (typeof nextTitle === "string" && nextTitle.trim()) {
+            document.title = nextTitle.trim();
+        }
+    }
+
+    function getRequestElement(detail) {
+        if (isElement(detail?.requestConfig?.elt)) {
+            return detail.requestConfig.elt;
+        }
+
+        if (isElement(detail?.elt)) {
+            return detail.elt;
+        }
+
+        if (isElement(detail?.target)) {
+            return detail.target;
+        }
+
+        return null;
+    }
+
+    function isProjectsCategoryRequest(detail) {
+        var element = getRequestElement(detail);
+
+        if (isElement(element) && element.closest(CATEGORY_TAGS_SELECTOR)) {
+            return true;
+        }
+
+        var triggeringTarget = detail?.triggeringEvent?.target;
+        return isElement(triggeringTarget) && Boolean(triggeringTarget.closest(CATEGORY_TAGS_SELECTOR));
+    }
+
+    function getRequestPath(detail) {
+        var requestPath = detail?.pathInfo?.requestPath || detail?.requestConfig?.path || "";
+        if (typeof requestPath === "string" && requestPath.trim()) {
+            return requestPath;
+        }
+
+        var element = getRequestElement(detail);
+        if (isElement(element)) {
+            var link = element.closest("a[href]");
+            if (link?.href) {
+                return link.href;
+            }
+        }
+
+        return "";
+    }
+
+    function setShellBusyState(isBusy) {
+        var shellElement = getProjectsShell();
+        if (shellElement) {
+            shellElement.setAttribute("aria-busy", isBusy ? "true" : "false");
+        }
+    }
+
+    function ProjectsListingController(shellElement) {
+        this.shellElement = shellElement;
+        this.endpoint = shellElement?.dataset.projectsEndpoint || "";
+        this.pageSize = parseInteger(shellElement?.dataset.projectsPageSize, 3);
+        this.feedElement = shellElement?.querySelector("#projectsFeed") || null;
+        this.messageElement = shellElement?.querySelector("#projectsMessage") || null;
+        this.statusElement = shellElement?.querySelector("#projectsStatus") || null;
+        this.loadMoreButton = shellElement?.querySelector("#projectsLoadMore") || null;
         this.state = {
-            page: parseInteger(document.body.dataset.projectsCurrentPage, 1),
-            nextPage: parseInteger(document.body.dataset.projectsNextPage, null),
-            hasNext: parseBoolean(document.body.dataset.projectsHasNext),
+            page: parseInteger(shellElement?.dataset.projectsCurrentPage, 1),
+            nextPage: parseInteger(shellElement?.dataset.projectsNextPage, null),
+            hasNext: parseBoolean(shellElement?.dataset.projectsHasNext),
             isLoading: false,
             itemsCount: this.feedElement ? this.feedElement.children.length : 0,
         };
@@ -36,8 +112,9 @@
 
     ProjectsListingController.prototype.init = function () {
         if (
+            !this.shellElement ||
+            this.shellElement.dataset.projectsListingBound === "1" ||
             !this.endpoint ||
-            !this.feedElement ||
             !this.messageElement ||
             !this.statusElement ||
             !this.loadMoreButton
@@ -45,8 +122,17 @@
             return;
         }
 
+        this.shellElement.dataset.projectsListingBound = "1";
         this.loadMoreButton.addEventListener("click", this.handleLoadMore.bind(this));
         this.updateLoadMoreButton();
+    };
+
+    ProjectsListingController.prototype.setBusyState = function (isBusy) {
+        this.shellElement?.setAttribute("aria-busy", isBusy ? "true" : "false");
+
+        if (this.feedElement) {
+            this.feedElement.setAttribute("aria-busy", isBusy ? "true" : "false");
+        }
     };
 
     ProjectsListingController.prototype.handleLoadMore = async function () {
@@ -60,6 +146,7 @@
 
         this.setStatus("Загружаем еще проекты.");
         this.state.isLoading = true;
+        this.setBusyState(true);
         this.updateLoadMoreButton();
         this.clearMessage();
 
@@ -75,7 +162,11 @@
             this.renderItems(result.items);
             this.state.itemsCount += result.items.length;
 
-            this.setStatus(result.items.length ? "Загружены дополнительные проекты." : "Дополнительных проектов не найдено.");
+            this.setStatus(
+                result.items.length
+                    ? "Загружены дополнительные проекты."
+                    : "Дополнительных проектов не найдено.",
+            );
         } catch (error) {
             this.state.isLoading = false;
             this.showMessage({
@@ -86,6 +177,7 @@
             console.error("[projects-listing] Failed to load more projects.", error);
         }
 
+        this.setBusyState(false);
         this.updateLoadMoreButton();
     };
 
@@ -124,6 +216,10 @@
     };
 
     ProjectsListingController.prototype.renderItems = function (items) {
+        if (!this.feedElement || !items.length) {
+            return;
+        }
+
         var fragment = document.createDocumentFragment();
         var self = this;
 
@@ -221,6 +317,10 @@
     };
 
     ProjectsListingController.prototype.updateLoadMoreButton = function () {
+        if (!this.loadMoreButton) {
+            return;
+        }
+
         var shouldShow = this.state.itemsCount > 0 && this.state.hasNext;
 
         this.loadMoreButton.hidden = !shouldShow;
@@ -231,9 +331,44 @@
     };
 
     function bootstrap() {
-        var controller = new ProjectsListingController();
-        if (controller) {
-            controller.init();
+        var shellElement = getProjectsShell();
+        if (!shellElement) {
+            return;
+        }
+
+        syncDocumentTitle(shellElement);
+
+        var controller = new ProjectsListingController(shellElement);
+        controller.init();
+    }
+
+    function handleCategoryNavigationStart(event) {
+        if (!isProjectsCategoryRequest(event.detail)) {
+            return;
+        }
+
+        pendingCategoryNavigationUrl = getRequestPath(event.detail);
+        setShellBusyState(true);
+    }
+
+    function handleCategoryNavigationSettle() {
+        setShellBusyState(false);
+        pendingCategoryNavigationUrl = "";
+        bootstrap();
+    }
+
+    function handleCategoryNavigationFailure(event) {
+        if (!isProjectsCategoryRequest(event.detail)) {
+            return;
+        }
+
+        setShellBusyState(false);
+
+        var navigationUrl = getRequestPath(event.detail) || pendingCategoryNavigationUrl;
+        pendingCategoryNavigationUrl = "";
+
+        if (navigationUrl) {
+            window.location.assign(navigationUrl);
         }
     }
 
@@ -242,4 +377,11 @@
     } else {
         bootstrap();
     }
+
+    document.body?.addEventListener("htmx:beforeRequest", handleCategoryNavigationStart);
+    document.body?.addEventListener("htmx:afterSwap", handleCategoryNavigationSettle);
+    document.body?.addEventListener("htmx:historyRestore", handleCategoryNavigationSettle);
+    document.body?.addEventListener("htmx:responseError", handleCategoryNavigationFailure);
+    document.body?.addEventListener("htmx:sendError", handleCategoryNavigationFailure);
+    document.body?.addEventListener("htmx:swapError", handleCategoryNavigationFailure);
 })();

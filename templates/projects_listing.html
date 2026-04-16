@@ -65,14 +65,7 @@
 
         <link rel="stylesheet" href="/css/projects.css?v=2026-04-08-3" />
     </head>
-    <body
-        data-page="projects"
-        data-projects-endpoint="{{ projects_feed.endpoint }}"
-        data-projects-page-size="{{ projects_feed.page_size }}"
-        data-projects-current-page="{{ projects_feed.current_page }}"
-        data-projects-next-page="{{ projects_feed.next_page }}"
-        data-projects-has-next="{% if projects_feed.has_next %}1{% else %}0{% endif %}"
-    >
+    <body data-page="projects">
         <div class="loader-wrap">
             <span class="loader"></span>
         </div>
@@ -82,6 +75,17 @@
         <main class="projects-page">
             <section class="projects" aria-labelledby="projectsTitle">
                 <div class="container">
+                    <div
+                        id="projectsListingShell"
+                        data-page-title="{{ page.title }} | Cultnova"
+                        data-projects-endpoint="{{ projects_feed.endpoint }}"
+                        data-projects-page-size="{{ projects_feed.page_size }}"
+                        data-projects-current-page="{{ projects_feed.current_page }}"
+                        data-projects-next-page="{{ projects_feed.next_page }}"
+                        data-projects-has-next="{% if projects_feed.has_next %}1{% else %}0{% endif %}"
+                        aria-busy="false"
+                        hx-history-elt
+                    >
                     <nav class="breadcrumbs projects-breadcrumbs" itemscope itemtype="https://schema.org/BreadcrumbList">
                         <ul class="breadcrumb-list">
                             {% for breadcrumb in breadcrumbs %}
@@ -141,7 +145,15 @@
                         </picture>
                     </div>
 
-                    <div class="projects__tags" aria-label="Категории проектов">
+                    <div
+                        class="projects__tags"
+                        aria-label="Категории проектов"
+                        hx-boost="true"
+                        hx-target="#projectsListingShell"
+                        hx-select="#projectsListingShell"
+                        hx-swap="outerHTML show:none"
+                        hx-push-url="true"
+                    >
                         {% for category in categories %}
                         <a
                             href="{{ category.url }}"
@@ -212,6 +224,7 @@
                             Показать еще
                         </button>
                     </div>
+                    </div>
                 </div>
             </section>
         </main>
@@ -279,7 +292,8 @@
         </button>
 
         <script src="/js/script.js" defer></script>
-        <script src="/js/projects-listing.js?v=2026-04-08-1" defer></script>
+        <script src="/vendor/htmx/htmx.min.js?v=2.0.4" defer></script>
+        <script src="/js/projects-listing.js?v=2026-04-16-1" defer></script>
         <script>
             (function () {
                 var initialized = false;

@@ -16,6 +16,11 @@ from blog.services.rich_text import (
 )
 from blog.widgets import JoditWidget
 from core.services.vk_cloud_storage import upload_media_to_vk_cloud
+from projects.services.project_category_seo import (
+    CURRENT_YEAR_TOKEN,
+    PROJECT_CATEGORY_CURRENT_YEAR_HELP_TEXT,
+    get_resolved_project_category_seo_fields,
+)
 from projects.services.project_listing import build_public_project_category_url
 from projects.services.project_rendering import build_public_project_url
 
@@ -32,6 +37,11 @@ class ProjectCategoriesAdminForm(forms.ModelForm):
     class Meta:
         model = ProjectCategories
         fields = "__all__"
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        for field_name in ("page_h1", "seo_title", "seo_description", "seo_keywords"):
+            self.fields[field_name].help_text = PROJECT_CATEGORY_CURRENT_YEAR_HELP_TEXT
 
     def clean(self):
         cleaned_data = super().clean()
@@ -263,7 +273,7 @@ class ProjectCategoriesAdmin(admin.ModelAdmin):
     list_display = ("title", "slug", "created_at")
     search_fields = ("title", "slug", "seo_title", "seo_description")
     prepopulated_fields = {"slug": ("title",)}
-    readonly_fields = ("category_public_url", "seo_snippet_preview", "created_at")
+    readonly_fields = ("year_token_hint", "category_public_url", "seo_snippet_preview", "created_at")
     fieldsets = (
         (
             "Content",
@@ -275,6 +285,7 @@ class ProjectCategoriesAdmin(admin.ModelAdmin):
             "SEO",
             {
                 "fields": (
+                    "year_token_hint",
                     "page_h1",
                     "seo_title",
                     "seo_description",
@@ -303,11 +314,23 @@ class ProjectCategoriesAdmin(admin.ModelAdmin):
 
     category_public_url.short_description = "Public URL"
 
+    def year_token_hint(self, obj):
+        return format_html(
+            '<div style="max-width: 680px;">'
+            'Используйте <code>{token}</code> в полях Page H1, SEO title, SEO description и SEO keywords. '
+            'Например: <code>Проекты музеев {token}</code>. Значение подставляется автоматически по Москве.'
+            "</div>",
+            token=CURRENT_YEAR_TOKEN,
+        )
+
+    year_token_hint.short_description = "Переменная года"
+
     def seo_snippet_preview(self, obj):
         category_title = (getattr(obj, "title", "") or "").strip()
-        title = ((obj.seo_title or "").strip() or f"{category_title} | Проекты" or "SEO title")
+        category_seo_fields = get_resolved_project_category_seo_fields(obj)
+        title = (category_seo_fields["seo_title"].strip() or f"{category_title} | Проекты" or "SEO title")
         description = (
-            (obj.seo_description or "").strip()
+            category_seo_fields["seo_description"].strip()
             or (f"Проекты Cultnova в категории «{category_title}»." if category_title else "")
             or "SEO description"
         )
