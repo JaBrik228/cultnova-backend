@@ -263,8 +263,19 @@ class ProjectsListingViewTests(TestCase):
         response = self.client.get(reverse("projects:projects_list"))
 
         self.assertEqual(response.status_code, 200)
+        self.assertContains(response, 'id="projectsListingShell"')
         self.assertContains(response, 'data-projects-endpoint="https://cms.cultnova.ru/api/projects/"')
         self.assertContains(response, f'data-projects-page-size="{PROJECTS_LISTING_PAGE_SIZE}"')
+        self.assertContains(response, 'data-projects-current-page="1"')
+        self.assertContains(response, 'data-projects-next-page="2"')
+        self.assertContains(response, 'data-projects-has-next="1"')
+        self.assertContains(response, 'data-page-title="Проекты | Cultnova"')
+        self.assertContains(response, 'hx-history-elt')
+        self.assertContains(response, 'hx-boost="true"')
+        self.assertContains(response, 'hx-target="#projectsListingShell"')
+        self.assertContains(response, 'hx-select="#projectsListingShell"')
+        self.assertContains(response, 'hx-swap="outerHTML show:none"')
+        self.assertContains(response, 'hx-push-url="true"')
         self.assertContains(response, "Education Delta")
         self.assertContains(response, "Education Gamma")
         self.assertContains(response, "Museum Beta")
@@ -276,10 +287,17 @@ class ProjectsListingViewTests(TestCase):
         response = self.client.get(reverse("projects:projects_category_list", kwargs={"slug": self.museums.slug}))
 
         self.assertEqual(response.status_code, 200)
+        self.assertContains(response, 'id="projectsListingShell"')
         self.assertContains(
             response,
             f'data-projects-endpoint="https://cms.cultnova.ru/api/projects/category/{self.museums.slug}/"',
         )
+        self.assertContains(response, f'data-projects-page-size="{PROJECTS_LISTING_PAGE_SIZE}"')
+        self.assertContains(response, 'data-projects-current-page="1"')
+        self.assertContains(response, 'data-projects-next-page=""')
+        self.assertContains(response, 'data-projects-has-next="0"')
+        self.assertContains(response, 'data-page-title="Museums | Проекты | Cultnova"')
+        self.assertContains(response, 'hx-swap="outerHTML show:none"')
         self.assertContains(response, f'href="{build_public_project_category_path(self.museums.slug)}"')
         self.assertContains(response, 'aria-current="page"')
         self.assertContains(response, "Museum Alpha")
@@ -412,7 +430,8 @@ class ProjectsListingViewTests(TestCase):
         self.assertIn('class="projects__hero-picture"', html)
         self.assertNotIn('href="https://example.com/delta.jpg"', html)
         self.assertIn('<script src="/js/script.js" defer></script>', html)
-        self.assertIn('<script src="/js/projects-listing.js?v=2026-04-08-1" defer></script>', html)
+        self.assertIn('<script src="/vendor/htmx/htmx.min.js?v=2.0.4" defer></script>', html)
+        self.assertIn('<script src="/js/projects-listing.js?v=2026-04-16-1" defer></script>', html)
         self.assertIn("requestIdleCallback", html)
         self.assertIn("https://mc.yandex.ru/metrika/tag.js", html)
 

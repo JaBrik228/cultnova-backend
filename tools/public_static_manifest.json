@@ -48,6 +48,11 @@
     },
     {
       "kind": "directory",
+      "source": "static/vendor/htmx",
+      "target": "vendor/htmx"
+    },
+    {
+      "kind": "directory",
       "source": "static/images/projects",
       "target": "images/projects"
     },
