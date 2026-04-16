@@ -44,7 +44,10 @@ Generated output format:
 
 - The CMS now manages the "СМИ о нас" section through Django admin.
 - Public endpoint: `GET /api/press/`
-- The endpoint returns only published items in `sort_order` order, with `title`, `description`, and `url`.
+- Supported query params: `limit` and `page`.
+- The endpoint returns only published items in `sort_order` order.
+- Response shape: `current_page`, `has_next`, `has_previous`, `next_page`, `data`.
+- Each `data` item contains `title`, `description`, and `url`.
 
 ## Projects static generation
 

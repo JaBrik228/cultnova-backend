@@ -3,6 +3,7 @@ from pathlib import Path
 from datetime import datetime, timedelta
 from unittest.mock import patch
 
+from django.conf import settings
 from django.contrib.auth import get_user_model
 from django.core.files.uploadedfile import SimpleUploadedFile
 from django.db import connection
@@ -356,6 +357,23 @@ class ProjectsListingViewTests(TestCase):
         self.assertIn('<script src="/js/projects-listing.js?v=2026-04-08-1" defer></script>', html)
         self.assertIn("requestIdleCallback", html)
         self.assertIn("https://mc.yandex.ru/metrika/tag.js", html)
+
+    def test_projects_root_page_includes_rich_collection_schema(self):
+        response = self.client.get(reverse("projects:projects_list"))
+
+        self.assertEqual(response.status_code, 200)
+        html = response.content.decode("utf-8")
+        base_url = settings.SITE_PUBLIC_BASE_URL.rstrip("/")
+
+        self.assertIn('<script type="application/ld+json">', html)
+        self.assertIn('"@type": ["WebPage", "CollectionPage"]', html)
+        self.assertIn('"@type": "BreadcrumbList"', html)
+        self.assertIn('"@type": "ItemList"', html)
+        self.assertIn(f'"@id": "{base_url}/projects/#webpage"', html)
+        self.assertIn(f'"@id": "{base_url}/projects/#breadcrumbs"', html)
+        self.assertIn(f'"@id": "{base_url}/projects/#item-list"', html)
+        self.assertIn(f'"url": "{base_url}/projects/"', html)
+        self.assertIn(f'"url": "{base_url}/"', html)
 
     def test_empty_category_page_renders_empty_state(self):
         response = self.client.get(reverse("projects:projects_category_list", kwargs={"slug": self.empty_category.slug}))

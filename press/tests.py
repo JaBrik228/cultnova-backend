@@ -105,6 +105,10 @@ class PressFeedApiTests(TestCase):
 
         self.assertEqual(response.status_code, 200)
         payload = response.json()
+        self.assertEqual(payload["current_page"], 1)
+        self.assertFalse(payload["has_next"])
+        self.assertFalse(payload["has_previous"])
+        self.assertIsNone(payload["next_page"])
         self.assertEqual(
             payload["data"],
             [
@@ -133,7 +137,78 @@ class PressFeedApiTests(TestCase):
         response = self.client.get(reverse("press:feed"))
 
         self.assertEqual(response.status_code, 200)
-        self.assertEqual(response.json(), {"data": []})
+        self.assertEqual(
+            response.json(),
+            {
+                "current_page": 1,
+                "has_next": False,
+                "has_previous": False,
+                "next_page": None,
+                "data": [],
+            },
+        )
+
+    def test_feed_paginates_with_limit_and_page(self):
+        response_page_1 = self.client.get(
+            reverse("press:feed"),
+            {"limit": 2, "page": 1},
+        )
+
+        self.assertEqual(response_page_1.status_code, 200)
+        payload_page_1 = response_page_1.json()
+        self.assertEqual(payload_page_1["current_page"], 1)
+        self.assertTrue(payload_page_1["has_next"])
+        self.assertFalse(payload_page_1["has_previous"])
+        self.assertEqual(payload_page_1["next_page"], 2)
+        self.assertEqual(
+            payload_page_1["data"],
+            [
+                {
+                    "title": "Gamma",
+                    "description": "Gamma description",
+                    "url": "https://example.com/gamma",
+                },
+                {
+                    "title": "Alpha",
+                    "description": "Alpha description",
+                    "url": "https://example.com/alpha",
+                },
+            ],
+        )
+
+        response_page_2 = self.client.get(
+            reverse("press:feed"),
+            {"limit": 2, "page": 2},
+        )
+
+        self.assertEqual(response_page_2.status_code, 200)
+        payload_page_2 = response_page_2.json()
+        self.assertEqual(payload_page_2["current_page"], 2)
+        self.assertFalse(payload_page_2["has_next"])
+        self.assertTrue(payload_page_2["has_previous"])
+        self.assertIsNone(payload_page_2["next_page"])
+        self.assertEqual(
+            payload_page_2["data"],
+            [
+                {
+                    "title": "Beta",
+                    "description": "Beta description",
+                    "url": "https://example.com/beta",
+                },
+            ],
+        )
+
+    def test_feed_sanitizes_invalid_limit_and_page_values(self):
+        response = self.client.get(
+            reverse("press:feed"),
+            {"limit": "0", "page": "invalid"},
+        )
+
+        self.assertEqual(response.status_code, 200)
+        payload = response.json()
+        self.assertEqual(payload["current_page"], 1)
+        self.assertEqual(len(payload["data"]), 1)
+        self.assertEqual(payload["data"][0]["title"], "Gamma")
 
 
 class PressAdminTests(TestCase):
