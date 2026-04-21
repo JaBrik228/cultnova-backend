@@ -18,7 +18,7 @@ from core.services.build_item_html import (
     sync_frontend_partials_if_configured,
 )
 
-from ..models import ProjectCategories, Projects, ProjectsContentBlock
+from ..models import ProjectCategories, Projects, ProjectsContentBlock, ServicePageProjects
 from .project_category_seo import get_resolved_project_category_seo_fields
 from .project_rendering import build_public_project_path
 
@@ -211,6 +211,55 @@ def build_paginated_projects_payload(
         "data": [
             build_project_card_payload(project, include_images=include_images)
             for project in projects_page
+        ],
+    }
+
+
+def _is_visible_project(project: Projects) -> bool:
+    return bool(
+        project
+        and project.is_published
+        and "noindex" not in _normalize_text(project.seo_robots).lower()
+    )
+
+
+def _attach_project_image_blocks(projects: list[Projects]) -> None:
+    project_ids = [project.pk for project in projects if project.pk]
+    if not project_ids:
+        return
+
+    image_blocks_by_project_id = {project_id: [] for project_id in project_ids}
+    image_blocks = (
+        ProjectsContentBlock.objects.filter(
+            project_id__in=project_ids,
+            type=ProjectsContentBlock.IMAGE,
+            media__isnull=False,
+        )
+        .exclude(media="")
+        .order_by("project_id", "order")
+    )
+
+    for block in image_blocks:
+        image_blocks_by_project_id.setdefault(block.project_id, []).append(block)
+
+    for project in projects:
+        project.image_blocks = image_blocks_by_project_id.get(project.pk, [])
+
+
+def build_service_page_projects_payload(service_page: ServicePageProjects) -> dict[str, object]:
+    selected_projects = [
+        project
+        for project in (getattr(service_page, field_name) for field_name in ServicePageProjects.PROJECT_FIELDS)
+        if _is_visible_project(project)
+    ]
+    _attach_project_image_blocks(selected_projects)
+
+    return {
+        "slug": service_page.slug,
+        "title": service_page.title,
+        "data": [
+            build_project_card_payload(project, include_images=True)
+            for project in selected_projects
         ],
     }
 

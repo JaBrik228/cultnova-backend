@@ -131,6 +131,8 @@
         <link rel="stylesheet" href="/css/blog.css" />
         <link rel="stylesheet" href="/css/articles-slider.css?v=2026-03-10-2" />
         <link rel="stylesheet" href="/css/article.css?v=2026-03-10-4" />
+        <link rel="stylesheet" href="/vendor/photoswipe/photoswipe.css" />
+        <link rel="stylesheet" href="/css/lightbox.css?v=2026-04-17-1" />
     </head>
     <body data-page="article">
         <div class="loader-wrap">
@@ -515,6 +517,9 @@
         </button>
 
         <script src="/js/script.js"></script>
+        <script src="/vendor/photoswipe/photoswipe.umd.min.js" defer></script>
+        <script src="/vendor/photoswipe/photoswipe-lightbox.umd.min.js" defer></script>
+        <script src="/js/lightbox.js?v=2026-04-17-1" defer></script>
         {% if related_articles %}
         <script src="/js/article-slider.js" defer></script>
         {% endif %} {% if article.has_video %}

@@ -5,11 +5,12 @@ from django.shortcuts import get_object_or_404, render
 from projects.services.project_listing import (
     build_paginated_projects_payload,
     build_projects_listing_context,
+    build_service_page_projects_payload,
     get_published_projects_queryset,
 )
 from projects.services.project_rendering import build_project_render_context
 
-from .models import ProjectCategories, Projects, ProjectsContentBlock
+from .models import ProjectCategories, Projects, ProjectsContentBlock, ServicePageProjects
 
 
 def _sanitize_limit(raw_value, default=10, max_value=100):
@@ -78,6 +79,19 @@ def get_projects_by_category(request, slug):
         page_key="page",
     )
 
+    return JsonResponse(payload, safe=False)
+
+
+def get_service_page_projects(request, slug):
+    service_page = get_object_or_404(
+        ServicePageProjects.objects.select_related(
+            "project_1__category",
+            "project_2__category",
+            "project_3__category",
+        ),
+        slug=slug,
+    )
+    payload = build_service_page_projects_payload(service_page)
     return JsonResponse(payload, safe=False)
 
 

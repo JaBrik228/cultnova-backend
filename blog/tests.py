@@ -126,6 +126,45 @@ class ArticleRenderingTests(TestCase):
         self.assertTrue(rendered_article.has_video)
 
 
+class ArticleDetailViewTests(TestCase):
+    def test_article_detail_includes_lightbox_assets_and_keeps_video_player_assets(self):
+        article = Articles.objects.create(
+            title="Article",
+            slug="article-with-lightbox",
+            body_html='<figure><img src="https://example.com/inline.jpg" alt="Inline"></figure><p>Body</p>',
+            excerpt="Excerpt",
+            seo_title="SEO Title",
+            seo_description="SEO Description",
+            is_published=True,
+        )
+        ArticlesContentBlock.objects.create(
+            article=article,
+            type=ArticlesContentBlock.IMAGE,
+            order=1,
+            media="https://example.com/sidebar.jpg",
+            media_alt="Sidebar alt",
+            caption="Sidebar caption",
+        )
+        ArticlesContentBlock.objects.create(
+            article=article,
+            type=ArticlesContentBlock.VIDEO,
+            order=2,
+            media="https://example.com/video.mp4",
+            first_video_frame="https://example.com/poster.jpg",
+        )
+
+        response = self.client.get(reverse("blog:article_detail", kwargs={"slug": article.slug}))
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, '/vendor/photoswipe/photoswipe.css')
+        self.assertContains(response, '/css/lightbox.css?v=2026-04-17-1')
+        self.assertContains(response, '/vendor/photoswipe/photoswipe.umd.min.js')
+        self.assertContains(response, '/vendor/photoswipe/photoswipe-lightbox.umd.min.js')
+        self.assertContains(response, '/js/lightbox.js?v=2026-04-17-1')
+        self.assertContains(response, '/js/video-player.js?v=2026-03-10-1')
+        self.assertContains(response, 'data-page="article"')
+
+
 class ArticleApiTests(TestCase):
     def test_articles_list_returns_publication_date_and_sidebar_photos_only(self):
         article = Articles.objects.create(
@@ -356,7 +395,13 @@ class ArticleStaticGenerationSignalTests(TestCase):
                 sitemap_path = Path(temp_dir) / "sitemap.xml"
 
                 self.assertTrue(initial_target.exists())
-                self.assertIn('data-page="article"', initial_target.read_text(encoding="utf-8"))
+                generated_html = initial_target.read_text(encoding="utf-8")
+                self.assertIn('data-page="article"', generated_html)
+                self.assertIn('/vendor/photoswipe/photoswipe.css', generated_html)
+                self.assertIn('/css/lightbox.css?v=2026-04-17-1', generated_html)
+                self.assertIn('/vendor/photoswipe/photoswipe.umd.min.js', generated_html)
+                self.assertIn('/vendor/photoswipe/photoswipe-lightbox.umd.min.js', generated_html)
+                self.assertIn('/js/lightbox.js?v=2026-04-17-1', generated_html)
                 self.assertIn("/articles/static-article/", sitemap_path.read_text(encoding="utf-8"))
 
                 with self.captureOnCommitCallbacks(execute=True):

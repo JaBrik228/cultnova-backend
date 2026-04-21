@@ -4,7 +4,8 @@ import re
 from django import forms
 from django.conf import settings
 from django.contrib import admin
-from django.http import JsonResponse
+from django.db import connection
+from django.http import HttpResponse, JsonResponse
 from django.urls import path, reverse
 from django.utils.html import format_html, mark_safe
 
@@ -24,7 +25,7 @@ from projects.services.project_category_seo import (
 from projects.services.project_listing import build_public_project_category_url
 from projects.services.project_rendering import build_public_project_url
 
-from .models import ProjectCategories, Projects, ProjectsContentBlock
+from .models import ProjectCategories, Projects, ProjectsContentBlock, ServicePageProjects
 
 
 def _trim(value):
@@ -264,6 +265,84 @@ class ContentBlockInline(admin.StackedInline):
         return "No preview"
 
     image_preview_inline.short_description = "Preview"
+
+
+class ServicePageProjectsAdminForm(forms.ModelForm):
+    class Meta:
+        model = ServicePageProjects
+        fields = "__all__"
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        help_text = "В API попадут только опубликованные проекты без noindex."
+        for field_name in ServicePageProjects.PROJECT_FIELDS:
+            if field_name in self.fields:
+                self.fields[field_name].help_text = help_text
+
+    def clean(self):
+        cleaned_data = super().clean()
+        selected_projects = [
+            cleaned_data.get(field_name)
+            for field_name in ServicePageProjects.PROJECT_FIELDS
+            if cleaned_data.get(field_name)
+        ]
+        selected_project_ids = [project.pk for project in selected_projects]
+
+        if len(selected_project_ids) != len(set(selected_project_ids)):
+            raise forms.ValidationError("Один и тот же проект нельзя выбрать в нескольких слотах.")
+
+        return cleaned_data
+
+
+def _service_page_projects_schema_ready():
+    table_name = ServicePageProjects._meta.db_table
+    existing_tables = connection.introspection.table_names()
+    if table_name not in existing_tables:
+        return False
+
+    with connection.cursor() as cursor:
+        columns = connection.introspection.get_table_description(cursor, table_name)
+    return "position" in {column.name for column in columns}
+
+
+@admin.register(ServicePageProjects)
+class ServicePageProjectsAdmin(admin.ModelAdmin):
+    form = ServicePageProjectsAdminForm
+    save_on_top = True
+    list_display = ("title_display", "slug", "project_1", "project_2", "project_3", "updated_at")
+    list_filter = ("slug",)
+    autocomplete_fields = ServicePageProjects.PROJECT_FIELDS
+    search_fields = (
+        "slug",
+        "project_1__title",
+        "project_2__title",
+        "project_3__title",
+    )
+    readonly_fields = ("title_display", "slug", "updated_at")
+    fields = ("title_display", "slug", "project_1", "project_2", "project_3", "updated_at")
+
+    def has_add_permission(self, request):
+        return False
+
+    def has_delete_permission(self, request, obj=None):
+        return False
+
+    def changelist_view(self, request, extra_context=None):
+        if not _service_page_projects_schema_ready():
+            return HttpResponse(
+                "Таблица страниц проектов на страницах услуг не готова. "
+                "Примените миграции projects до последней версии.",
+                status=503,
+                content_type="text/plain; charset=utf-8",
+            )
+
+        ServicePageProjects.ensure_default_pages()
+        return super().changelist_view(request, extra_context=extra_context)
+
+    def title_display(self, obj):
+        return obj.title if obj and obj.pk else ""
+
+    title_display.short_description = "Страница услуги"
 
 
 @admin.register(ProjectCategories)
