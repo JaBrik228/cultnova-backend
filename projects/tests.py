@@ -2,6 +2,7 @@
 from pathlib import Path
 from datetime import datetime, timedelta, timezone as dt_timezone
 from unittest.mock import patch
+import json
 
 from django.conf import settings
 from django.contrib.auth import get_user_model
@@ -12,7 +13,7 @@ from django.test import TestCase, TransactionTestCase, override_settings
 from django.urls import reverse
 from django.utils import timezone
 
-from projects.models import ProjectCategories, Projects, ProjectsContentBlock
+from projects.models import ProjectCategories, Projects, ProjectsContentBlock, ServicePageProjects
 from projects.services.project_category_seo import (
     CURRENT_YEAR_TOKEN,
     get_project_category_current_year,
@@ -185,6 +186,62 @@ class ProjectRenderingTests(TestCase):
         self.assertTrue(rendered.share_links)
         self.assertTrue(context["related_projects"])
         self.assertIn("CreativeWork", context["project_json_ld"])
+
+
+class ProjectDetailViewTests(TestCase):
+    def test_project_detail_includes_lightbox_assets_and_keeps_video_player_assets(self):
+        category = ProjectCategories.objects.create(title="Museums", slug="museums")
+        project = Projects.objects.create(
+            title="Project",
+            slug="project-with-lightbox",
+            category=category,
+            customer_name="Client",
+            year=2025,
+            type="Installation",
+            body_html='<figure><img src="https://example.com/inline.jpg" alt="Inline"></figure><p>Body</p>',
+            excerpt="Excerpt",
+            seo_title="SEO title",
+            seo_description="SEO description",
+            is_published=True,
+        )
+        ProjectsContentBlock.objects.create(
+            project=project,
+            type=ProjectsContentBlock.IMAGE,
+            order=1,
+            media="https://example.com/image.jpg",
+            media_alt="Image alt",
+            caption="Image caption",
+        )
+        ProjectsContentBlock.objects.create(
+            project=project,
+            type=ProjectsContentBlock.VIDEO,
+            order=2,
+            media="https://example.com/video.mp4",
+            first_video_frame="https://example.com/poster.jpg",
+        )
+
+        response = self.client.get(reverse("projects:project_detail", kwargs={"slug": project.slug}))
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, '/vendor/photoswipe/photoswipe.css')
+        self.assertContains(response, '/css/lightbox.css?v=2026-04-17-1')
+        self.assertContains(response, '/vendor/photoswipe/photoswipe.umd.min.js')
+        self.assertContains(response, '/vendor/photoswipe/photoswipe-lightbox.umd.min.js')
+        self.assertContains(response, '/js/lightbox.js?v=2026-04-17-1')
+        self.assertContains(response, '/js/video-player.js?v=2026-03-10-1')
+        self.assertContains(response, 'data-page="project"')
+
+
+class PublicStaticManifestTests(TestCase):
+    def test_manifest_includes_lightbox_assets(self):
+        with open("tools/public_static_manifest.json", "r", encoding="utf-8") as manifest_file:
+            manifest = json.load(manifest_file)
+
+        entries = {(entry["source"], entry["target"]) for entry in manifest["entries"]}
+
+        self.assertIn(("static/css/lightbox.css", "css/lightbox.css"), entries)
+        self.assertIn(("static/js/lightbox.js", "js/lightbox.js"), entries)
+        self.assertIn(("static/vendor/photoswipe", "vendor/photoswipe"), entries)
 
 
 class ProjectsListingViewTests(TestCase):
@@ -659,6 +716,69 @@ class ProjectApiTests(TestCase):
         self.assertEqual(explicit_response.status_code, 200)
         self.assertEqual(legacy_response.json(), explicit_response.json())
 
+    def test_service_page_projects_endpoint_returns_selected_visible_projects_in_slot_order(self):
+        second_visible = Projects.objects.create(
+            title="Second Visible",
+            slug="second-visible-service-project",
+            category=self.category,
+            customer_name="Client",
+            year=2025,
+            type="Type",
+            body_html="<p>Body</p>",
+            seo_title="SEO",
+            seo_description="SEO",
+            is_published=True,
+        )
+        noindex_project = Projects.objects.create(
+            title="Noindex",
+            slug="noindex-service-project",
+            category=self.category,
+            customer_name="Client",
+            year=2025,
+            type="Type",
+            body_html="<p>Body</p>",
+            seo_title="SEO",
+            seo_description="SEO",
+            seo_robots="noindex,follow",
+            is_published=True,
+        )
+        ProjectsContentBlock.objects.create(
+            project=second_visible,
+            type=ProjectsContentBlock.IMAGE,
+            order=1,
+            media="https://example.com/second-visible.jpg",
+            media_alt="Second visible alt",
+        )
+        service_page = ServicePageProjects.objects.get(slug="musium")
+        service_page.project_1 = second_visible
+        service_page.project_2 = self.hidden_project
+        service_page.project_3 = self.project
+        service_page.save()
+
+        ServicePageProjects.objects.filter(pk=service_page.pk).update(project_2=noindex_project)
+
+        response = self.client.get(reverse("projects:get_service_page_projects", kwargs={"slug": "musium"}))
+
+        self.assertEqual(response.status_code, 200)
+        payload = response.json()
+        self.assertEqual(payload["slug"], "musium")
+        self.assertEqual(payload["title"], "Музеи и интерактивные пространства")
+        self.assertEqual([item["slug"] for item in payload["data"]], [second_visible.slug, self.project.slug])
+        self.assertEqual(
+            payload["data"][0]["images"],
+            [{"url": "https://example.com/second-visible.jpg", "alt": "Second visible alt"}],
+        )
+        self.assertEqual(payload["data"][1]["images"], [{"url": "https://example.com/image.jpg", "alt": "Alt"}])
+
+    def test_service_page_projects_endpoint_allows_empty_slots(self):
+        response = self.client.get(reverse("projects:get_service_page_projects", kwargs={"slug": "content"}))
+
+        self.assertEqual(response.status_code, 200)
+        payload = response.json()
+        self.assertEqual(payload["slug"], "content")
+        self.assertEqual(payload["data"], [])
+
+
     def test_project_legacy_detail_endpoint_keeps_list_and_has_media_fields(self):
         response = self.client.get(f"/api/projects/detail/{self.project.slug}")
 
@@ -682,6 +802,24 @@ class ProjectApiTests(TestCase):
 
         self.assertEqual(response.status_code, 200)
         self.assertContains(response, self.project.title)
+
+
+class ServicePageProjectsModelTests(TestCase):
+    def test_default_service_pages_are_created_and_ordered_by_menu(self):
+        expected_slugs = [slug for slug, _title in ServicePageProjects.SERVICE_PAGE_CHOICES]
+
+        self.assertEqual(list(ServicePageProjects.objects.values_list("slug", flat=True)), expected_slugs)
+
+    def test_ensure_default_pages_restores_missing_static_page(self):
+        ServicePageProjects.objects.filter(slug="service").delete()
+
+        ServicePageProjects.ensure_default_pages()
+
+        self.assertTrue(ServicePageProjects.objects.filter(slug="service").exists())
+        self.assertEqual(
+            list(ServicePageProjects.objects.values_list("slug", flat=True)),
+            [slug for slug, _title in ServicePageProjects.SERVICE_PAGE_CHOICES],
+        )
 
 
 class ProjectAdminInlineImageUploadTests(TestCase):
@@ -816,6 +954,72 @@ class ProjectCategoryAdminTests(TestCase):
         self.assertEqual(category.canonical_url, "https://example.com/projects/category/architecture/")
 
 
+class ServicePageProjectsAdminTests(TestCase):
+    def setUp(self):
+        self.user = get_user_model().objects.create_superuser(
+            username="service-page-admin",
+            email="service-page-admin@example.com",
+            password="password123",
+        )
+        self.category = ProjectCategories.objects.create(title="Museums", slug="museums-admin")
+        self.project = Projects.objects.create(
+            title="Admin Project",
+            slug="admin-service-page-project",
+            category=self.category,
+            customer_name="Client",
+            year=2025,
+            type="Type",
+            body_html="<p>Body</p>",
+            seo_title="SEO",
+            seo_description="SEO",
+            is_published=True,
+        )
+        self.service_page = ServicePageProjects.objects.get(slug="service")
+
+    def test_service_page_projects_admin_change_page_contains_three_project_slots(self):
+        self.client.force_login(self.user)
+        response = self.client.get(reverse("admin:projects_servicepageprojects_change", args=[self.service_page.pk]))
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, "Техническое сопровождение и обслуживание")
+        self.assertContains(response, 'name="project_1"')
+        self.assertContains(response, 'name="project_2"')
+        self.assertContains(response, 'name="project_3"')
+        self.assertNotContains(response, 'name="_delete"')
+
+    def test_service_page_projects_admin_changelist_restores_static_pages(self):
+        ServicePageProjects.objects.filter(slug="service").delete()
+
+        self.client.force_login(self.user)
+        response = self.client.get(reverse("admin:projects_servicepageprojects_changelist"))
+
+        self.assertEqual(response.status_code, 200)
+        self.assertTrue(ServicePageProjects.objects.filter(slug="service").exists())
+        self.assertContains(response, "Техническое сопровождение и обслуживание")
+
+    def test_service_page_projects_admin_disables_add_view(self):
+        self.client.force_login(self.user)
+        response = self.client.get(reverse("admin:projects_servicepageprojects_add"))
+
+        self.assertEqual(response.status_code, 403)
+
+    def test_service_page_projects_admin_form_rejects_duplicate_projects(self):
+        from projects.admin import ServicePageProjectsAdminForm
+
+        form = ServicePageProjectsAdminForm(
+            instance=self.service_page,
+            data={
+                "slug": self.service_page.slug,
+                "project_1": self.project.pk,
+                "project_2": self.project.pk,
+                "project_3": "",
+            },
+        )
+
+        self.assertFalse(form.is_valid())
+        self.assertIn("Один и тот же проект нельзя выбрать", str(form.errors))
+
+
 class ProjectStaticGenerationSignalTests(TestCase):
     @override_settings(SITE_PUBLIC_BASE_URL="https://example.com")
     def test_static_html_is_generated_and_removed_on_unpublish(self):
@@ -843,7 +1047,13 @@ class ProjectStaticGenerationSignalTests(TestCase):
                 self.assertTrue(target.exists())
                 self.assertTrue(listing_target.exists())
                 self.assertTrue(category_target.exists())
-                self.assertIn('data-page="project"', target.read_text(encoding="utf-8"))
+                generated_html = target.read_text(encoding="utf-8")
+                self.assertIn('data-page="project"', generated_html)
+                self.assertIn('/vendor/photoswipe/photoswipe.css', generated_html)
+                self.assertIn('/css/lightbox.css?v=2026-04-17-1', generated_html)
+                self.assertIn('/vendor/photoswipe/photoswipe.umd.min.js', generated_html)
+                self.assertIn('/vendor/photoswipe/photoswipe-lightbox.umd.min.js', generated_html)
+                self.assertIn('/js/lightbox.js?v=2026-04-17-1', generated_html)
                 self.assertIn('data-page="projects"', listing_target.read_text(encoding="utf-8"))
                 self.assertIn(category.title, category_target.read_text(encoding="utf-8"))
                 self.assertIn("/projects/static-project/", sitemap_path.read_text(encoding="utf-8"))

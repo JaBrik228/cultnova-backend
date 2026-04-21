@@ -1,12 +1,12 @@
-from django.db import transaction
-from django.db.models.signals import post_delete, post_save, pre_save
+from django.db import connections, transaction
+from django.db.models.signals import post_delete, post_migrate, post_save, pre_save
 from django.dispatch import receiver
 from django.utils import timezone
 
 from core.services.build_item_html import build_item_detail_static_html, delete_item_detail_static_html
 from core.services.sitemap import build_public_sitemaps
 
-from .models import ProjectCategories, Projects, ProjectsContentBlock
+from .models import ProjectCategories, Projects, ProjectsContentBlock, ServicePageProjects
 from .services.project_listing import rebuild_projects_listing_static_html
 
 
@@ -143,3 +143,21 @@ def project_category_save_handler(sender, instance, **kwargs):
 @receiver(post_delete, sender=ProjectCategories)
 def project_category_delete_handler(sender, instance, **kwargs):
     _schedule_listing_rebuild(prune_stale=True)
+
+
+@receiver(post_migrate)
+def service_page_projects_post_migrate_handler(sender, **kwargs):
+    if sender.name != "projects":
+        return
+
+    db_alias = kwargs.get("using") or "default"
+    connection = connections[db_alias]
+    if ServicePageProjects._meta.db_table not in connection.introspection.table_names():
+        return
+
+    with connection.cursor() as cursor:
+        columns = connection.introspection.get_table_description(cursor, ServicePageProjects._meta.db_table)
+    if "position" not in {column.name for column in columns}:
+        return
+
+    ServicePageProjects.ensure_default_pages()

@@ -8,6 +8,11 @@
     },
     {
       "kind": "file",
+      "source": "static/css/lightbox.css",
+      "target": "css/lightbox.css"
+    },
+    {
+      "kind": "file",
       "source": "static/css/articles-slider.css",
       "target": "css/articles-slider.css"
     },
@@ -38,6 +43,11 @@
     },
     {
       "kind": "file",
+      "source": "static/js/lightbox.js",
+      "target": "js/lightbox.js"
+    },
+    {
+      "kind": "file",
       "source": "static/js/projects-listing.js",
       "target": "js/projects-listing.js"
     },
@@ -50,6 +60,11 @@
       "kind": "directory",
       "source": "static/vendor/htmx",
       "target": "vendor/htmx"
+    },
+    {
+      "kind": "directory",
+      "source": "static/vendor/photoswipe",
+      "target": "vendor/photoswipe"
     },
     {
       "kind": "directory",

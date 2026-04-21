@@ -57,6 +57,77 @@ class Projects(BaseContentItem):
         return self.title
 
 
+class ServicePageProjects(models.Model):
+    PROJECT_FIELDS = ("project_1", "project_2", "project_3")
+    SERVICE_PAGE_CHOICES = (
+        ("service", "Техническое сопровождение и обслуживание"),
+        ("environment", "Доступная среда"),
+        ("stand", "Застройка выставок"),
+        ("musium", "Музеи и интерактивные пространства"),
+        ("design", "Архитектурное проектирование и дизайн"),
+        ("content", "Контент и анимация"),
+        ("app", "Разработка приложений и ПО"),
+    )
+
+    slug = models.SlugField(
+        unique=True,
+        choices=SERVICE_PAGE_CHOICES,
+        verbose_name="Страница услуги",
+    )
+    position = models.PositiveSmallIntegerField(default=0, editable=False, verbose_name="Порядок")
+    project_1 = models.ForeignKey(
+        Projects,
+        blank=True,
+        null=True,
+        on_delete=models.SET_NULL,
+        related_name="+",
+        verbose_name="Проект 1",
+    )
+    project_2 = models.ForeignKey(
+        Projects,
+        blank=True,
+        null=True,
+        on_delete=models.SET_NULL,
+        related_name="+",
+        verbose_name="Проект 2",
+    )
+    project_3 = models.ForeignKey(
+        Projects,
+        blank=True,
+        null=True,
+        on_delete=models.SET_NULL,
+        related_name="+",
+        verbose_name="Проект 3",
+    )
+    updated_at = models.DateTimeField(auto_now=True, verbose_name="Updated at")
+
+    class Meta:
+        verbose_name = "Страница проектов на странице услуги"
+        verbose_name_plural = "Страницы проектов на страницах услуг"
+        ordering = ("position", "slug")
+
+    @property
+    def title(self):
+        return dict(self.SERVICE_PAGE_CHOICES).get(self.slug, self.slug)
+
+    @classmethod
+    def ensure_default_pages(cls):
+        existing_pages = {
+            page.slug: page
+            for page in cls.objects.filter(slug__in=[slug for slug, _title in cls.SERVICE_PAGE_CHOICES])
+        }
+
+        for position, (slug, _title) in enumerate(cls.SERVICE_PAGE_CHOICES, start=1):
+            page = existing_pages.get(slug)
+            if page is None:
+                cls.objects.create(slug=slug, position=position)
+            elif page.position != position:
+                cls.objects.filter(pk=page.pk).update(position=position)
+
+    def __str__(self):
+        return self.title
+
+
 class ProjectsContentBlock(BaseContentBlock):
     TEXT = "text"
     HEADING = "heading"
