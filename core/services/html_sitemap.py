@@ -105,7 +105,7 @@ class _PageMetaParser(HTMLParser):
 
     @property
     def h1(self) -> str:
-        return "".join(self._h1_parts).strip()
+        return " ".join("".join(self._h1_parts).split())
 
     def handle_starttag(self, tag, attrs):
         tag_name = tag.lower()
@@ -115,6 +115,10 @@ class _PageMetaParser(HTMLParser):
 
         if tag_name == "h1" and not self._h1_found:
             self._inside_h1 = True
+            return
+
+        if tag_name == "br" and self._inside_h1:
+            self._h1_parts.append(" ")
             return
 
         if tag_name != "meta":

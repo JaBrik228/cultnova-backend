@@ -376,6 +376,39 @@ class HtmlSitemapServiceTests(SimpleTestCase):
                 self.assertEqual(section_map["info"].links[0].title, "О компании")
 
     @override_settings(SITE_PUBLIC_BASE_URL="https://example.com")
+    def test_build_html_sitemap_separates_h1_lines_split_by_br(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            with override_settings(GENERATED_HTML_PAGES_PATH=temp_dir):
+                root = Path(temp_dir)
+                self._write_sitemap_xml(
+                    root / "sitemap.xml",
+                    [
+                        "https://example.com/about/",
+                        "https://example.com/info/contacts/",
+                    ],
+                )
+                self._write_titled_page(
+                    root / "about" / "index.html",
+                    "About | Cultnova",
+                    robots="index,follow",
+                    h1="First line<br>Second line",
+                )
+                self._write_titled_page(
+                    root / "info" / "contacts" / "index.html",
+                    "Contacts | Cultnova",
+                    robots="index,follow",
+                    h1="Third line<br />Fourth line",
+                )
+
+                sections = build_html_sitemap()
+                section_map = {section.key: section for section in sections}
+
+                self.assertEqual(
+                    [link.title for link in section_map["info"].links],
+                    ["First line Second line", "Third line Fourth line"],
+                )
+
+    @override_settings(SITE_PUBLIC_BASE_URL="https://example.com")
     def test_build_html_sitemap_raises_when_xml_missing(self):
         with tempfile.TemporaryDirectory() as temp_dir:
             with override_settings(GENERATED_HTML_PAGES_PATH=temp_dir):
