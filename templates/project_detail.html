@@ -201,7 +201,10 @@
                                 <img
                                     src="{{ project.feature_media.url }}"
                                     alt="{{ project.feature_media.alt|default:project.title }}"
-                                    loading="lazy"
+                                    width="792"
+                                    height="346"
+                                    loading="eager"
+                                    fetchpriority="high"
                                     decoding="async"
                                 />
                             </div>
@@ -287,6 +290,8 @@
                                     <img
                                         src="{{ item.url }}"
                                         alt="{{ item.alt|default:project.title }}"
+                                        width="384"
+                                        height="256"
                                         loading="lazy"
                                         decoding="async"
                                     />

@@ -98,6 +98,12 @@
     object-fit: cover;
 }
 
+.project__feature-media img,
+.project__gallery-item img {
+    image-rendering: auto;
+    -ms-interpolation-mode: bicubic;
+}
+
 .project__details {
     margin-top: 32px;
     display: flex;
