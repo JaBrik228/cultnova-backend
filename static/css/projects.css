@@ -258,6 +258,7 @@ html{font-size:15px;scroll-behavior:smooth;-webkit-text-size-adjust:100%;-moz-te
     justify-content: center;
     min-width: 220px;
     white-space: nowrap;
+    font-weight: 700;
 }
 
 .projects__load-more:disabled {

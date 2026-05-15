@@ -224,6 +224,7 @@
     justify-content: center;
     min-width: 220px;
     white-space: nowrap;
+    font-weight: 700;
 }
 
 .projects__load-more:disabled {
