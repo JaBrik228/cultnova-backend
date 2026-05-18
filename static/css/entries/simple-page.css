@@ -1,3 +1,4 @@
 @import url("/css/general.css");
 @import url("/css/loader.css");
 @import url("/css/style.css");
+@import "./legacy-cursor-backend-override.css";
