@@ -83,5 +83,6 @@ db.sqlite3
 generated_pages/
 staticfiles/
 .playwright-cli/
+.playwright-mcp/
 .cache/
 .codex/

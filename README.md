@@ -99,6 +99,7 @@ Options:
 Deploy behavior:
 
 - Deploy always syncs remote Python dependencies from `requirements.txt`.
+- Deploy packages local Django app directories from `INSTALLED_APPS`, so new CMS apps are included automatically.
 - Deploy checks for pending migrations before rebuilding generated pages.
 - Deploy always runs `python manage.py collectstatic --noinput --clear` on the remote CMS app.
 - Deploy always runs:

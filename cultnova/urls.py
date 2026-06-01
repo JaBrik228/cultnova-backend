@@ -22,5 +22,6 @@ urlpatterns = [
     path(settings.ADMIN_URL, admin.site.urls),
     path('', include('blog.urls')),
     path('', include('press.urls')),
+    path('', include('reviews.urls')),
     path('', include('projects.urls')),
 ]

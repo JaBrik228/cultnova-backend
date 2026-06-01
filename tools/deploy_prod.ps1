@@ -89,6 +89,55 @@ function Read-KeyValueConfig {
     return $config
 }
 
+function Get-DjangoLocalAppDirectories {
+    param(
+        [string]$RepoRoot,
+        [string]$SettingsPath
+    )
+
+    if (-not (Test-Path -LiteralPath $SettingsPath -PathType Leaf)) {
+        Fail ("Django settings file not found: {0}" -f $SettingsPath)
+    }
+
+    $settingsContent = Get-Content -LiteralPath $SettingsPath -Raw
+    $installedAppsMatch = [regex]::Match($settingsContent, "(?s)INSTALLED_APPS\s*=\s*\[(.*?)\]")
+
+    if (-not $installedAppsMatch.Success) {
+        Fail ("Failed to parse INSTALLED_APPS from settings: {0}" -f $SettingsPath)
+    }
+
+    $appDirectories = [System.Collections.Generic.List[string]]::new()
+    $seen = [System.Collections.Generic.HashSet[string]]::new([System.StringComparer]::OrdinalIgnoreCase)
+    $quotedEntries = [regex]::Matches($installedAppsMatch.Groups[1].Value, "['""]([^'""]+)['""]")
+
+    foreach ($match in $quotedEntries) {
+        $entry = $match.Groups[1].Value.Trim()
+        if ([string]::IsNullOrWhiteSpace($entry) -or $entry.StartsWith("django.")) {
+            continue
+        }
+
+        $moduleName = $entry
+        $appsMarkerIndex = $entry.IndexOf(".apps.", [System.StringComparison]::Ordinal)
+        if ($appsMarkerIndex -gt 0) {
+            $moduleName = $entry.Substring(0, $appsMarkerIndex)
+        }
+        elseif ($entry.Contains(".")) {
+            $moduleName = $entry.Split(".")[0]
+        }
+
+        $candidateDirectory = Join-Path $RepoRoot $moduleName
+        if (-not (Test-Path -LiteralPath $candidateDirectory -PathType Container)) {
+            continue
+        }
+
+        if ($seen.Add($moduleName)) {
+            [void]$appDirectories.Add($moduleName)
+        }
+    }
+
+    return @($appDirectories)
+}
+
 function Convert-ToManifestRelativePath {
     param(
         [string]$Value,
@@ -1076,17 +1125,25 @@ try {
     Write-Step ("Deploy log: {0}" -f $script:LogFile)
 
     $packagePath = Join-Path $packageDir ("cultnova_cms_deploy_{0}.tar.gz" -f $timestamp)
+    $settingsPath = Join-Path $repoRoot "cultnova\settings.py"
+    $localAppDirectories = Get-DjangoLocalAppDirectories -RepoRoot $repoRoot -SettingsPath $settingsPath
+
     $packageIncludes = @(
-        "blog",
-        "core",
-        "cultnova",
-        "projects",
-        "press",
+        "cultnova"
+    ) + $localAppDirectories + @(
         "static",
         "templates",
         "manage.py",
         "requirements.txt"
-    )
+    ) | Select-Object -Unique
+
+    foreach ($packageInclude in $packageIncludes) {
+        if (-not (Test-Path -LiteralPath (Join-Path $repoRoot $packageInclude))) {
+            Fail ("Deploy package include is missing locally: {0}" -f $packageInclude)
+        }
+    }
+
+    Write-Step ("Deploy package includes: {0}" -f ($packageIncludes -join ", "))
 
     Push-Location $repoRoot
     try {

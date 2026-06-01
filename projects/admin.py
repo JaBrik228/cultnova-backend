@@ -22,7 +22,10 @@ from projects.services.project_category_seo import (
     PROJECT_CATEGORY_CURRENT_YEAR_HELP_TEXT,
     get_resolved_project_category_seo_fields,
 )
-from projects.services.project_listing import build_public_project_category_url
+from projects.services.project_listing import (
+    apply_projects_listing_ordering,
+    build_public_project_category_url,
+)
 from projects.services.project_rendering import build_public_project_url
 
 from .models import ProjectCategories, Projects, ProjectsContentBlock, ServicePageProjects
@@ -436,8 +439,8 @@ class ProjectCategoriesAdmin(admin.ModelAdmin):
 
 @admin.register(Projects)
 class ProjectsAdmin(admin.ModelAdmin):
-    list_display = ("title", "slug", "category", "is_published", "created_at", "updated_at")
-    list_editable = ("is_published",)
+    list_display = ("title", "sort_order", "slug", "category", "is_published", "created_at", "updated_at")
+    list_editable = ("sort_order", "is_published")
     list_filter = ("category", "is_published", "created_at", "updated_at")
     search_fields = ("title", "slug", "customer_name", "seo_title", "seo_description", "excerpt")
     prepopulated_fields = {"slug": ("title",)}
@@ -460,6 +463,7 @@ class ProjectsAdmin(admin.ModelAdmin):
                     "title",
                     "slug",
                     "category",
+                    "sort_order",
                     "customer_name",
                     "year",
                     "type",
@@ -502,6 +506,10 @@ class ProjectsAdmin(admin.ModelAdmin):
             },
         ),
     )
+
+    def get_queryset(self, request):
+        queryset = super().get_queryset(request).select_related("category")
+        return apply_projects_listing_ordering(queryset)
 
     def get_form(self, request, obj=None, change=False, **kwargs):
         form = super().get_form(request, obj, change, **kwargs)

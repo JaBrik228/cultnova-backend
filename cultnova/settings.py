@@ -69,6 +69,7 @@ INSTALLED_APPS = [
     'core',
     'blog',
     'press.apps.PressConfig',
+    'reviews.apps.ReviewsConfig',
     'projects',
 ]
 

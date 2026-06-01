@@ -5,11 +5,12 @@ from unittest.mock import patch
 import json
 
 from django.conf import settings
+from django.contrib import admin
 from django.contrib.auth import get_user_model
 from django.core.files.uploadedfile import SimpleUploadedFile
 from django.db import connection
 from django.db.migrations.executor import MigrationExecutor
-from django.test import TestCase, TransactionTestCase, override_settings
+from django.test import RequestFactory, TestCase, TransactionTestCase, override_settings
 from django.urls import reverse
 from django.utils import timezone
 
@@ -120,6 +121,68 @@ class ProjectCategorySeoMigrationTests(MigrationTestCase):
         self.assertEqual(category.canonical_url, "")
 
 
+class ProjectSortOrderMigrationTests(MigrationTestCase):
+    migrate_from = ("projects", "0012_servicepageprojects_position")
+    migrate_to = ("projects", "0013_projects_sort_order")
+
+    def set_up_before_migration(self, apps):
+        ProjectCategories = apps.get_model("projects", "ProjectCategories")
+        Projects = apps.get_model("projects", "Projects")
+
+        category = ProjectCategories.objects.create(title="Museums", slug="museums")
+        oldest = Projects.objects.create(
+            title="Oldest",
+            slug="oldest",
+            category_id=category.id,
+            customer_name="Client",
+            year=2023,
+            type="Type",
+            body_html="<p>Body</p>",
+            seo_title="SEO",
+            seo_description="SEO",
+            is_published=True,
+        )
+        middle = Projects.objects.create(
+            title="Middle",
+            slug="middle",
+            category_id=category.id,
+            customer_name="Client",
+            year=2024,
+            type="Type",
+            body_html="<p>Body</p>",
+            seo_title="SEO",
+            seo_description="SEO",
+            is_published=True,
+        )
+        newest = Projects.objects.create(
+            title="Newest",
+            slug="newest",
+            category_id=category.id,
+            customer_name="Client",
+            year=2025,
+            type="Type",
+            body_html="<p>Body</p>",
+            seo_title="SEO",
+            seo_description="SEO",
+            is_published=True,
+        )
+
+        now = timezone.now()
+        Projects.objects.filter(pk=oldest.pk).update(created_at=now - timedelta(days=3))
+        Projects.objects.filter(pk=middle.pk).update(created_at=now - timedelta(days=2))
+        Projects.objects.filter(pk=newest.pk).update(created_at=now - timedelta(days=1))
+
+    def test_existing_projects_receive_sequential_sort_order_in_previous_public_order(self):
+        Projects = self.apps.get_model("projects", "Projects")
+
+        projects = list(Projects.objects.order_by("sort_order").values_list("slug", "sort_order"))
+
+        self.assertEqual(
+            projects,
+            [("newest", 1), ("middle", 2), ("oldest", 3)],
+        )
+
+
 class ProjectCategoryCurrentYearHelperTests(TestCase):
     def test_current_year_uses_moscow_timezone(self):
         boundary_moment = datetime(2025, 12, 31, 21, 30, tzinfo=dt_timezone.utc)
@@ -189,6 +252,33 @@ class ProjectRenderingTests(TestCase):
 
 
 class ProjectDetailViewTests(TestCase):
+    def test_project_detail_renders_inline_discuss_form_contract(self):
+        category = ProjectCategories.objects.create(title="Museums", slug="museums")
+        project = Projects.objects.create(
+            title="Project",
+            slug="project-with-inline-form",
+            category=category,
+            customer_name="Client",
+            year=2025,
+            type="Installation",
+            body_html="<p>Body</p>",
+            excerpt="Excerpt",
+            seo_title="SEO title",
+            seo_description="SEO description",
+            is_published=True,
+        )
+
+        response = self.client.get(reverse("projects:project_detail", kwargs={"slug": project.slug}))
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, 'class="project-discuss__form"')
+        self.assertContains(response, 'data-form-type="project-discuss"')
+        self.assertContains(response, 'name="name"')
+        self.assertContains(response, 'name="company"')
+        self.assertContains(response, 'name="email"')
+        self.assertContains(response, 'name="phone"')
+        self.assertContains(response, '<script src="/js/script.js"></script>', html=True)
+
     def test_project_detail_includes_lightbox_assets_and_keeps_video_player_assets(self):
         category = ProjectCategories.objects.create(title="Museums", slug="museums")
         project = Projects.objects.create(
@@ -254,6 +344,7 @@ class ProjectsListingViewTests(TestCase):
             title="Museum Alpha",
             slug="museum-alpha",
             category=self.museums,
+            sort_order=None,
             customer_name="Client",
             year=2025,
             type="Type",
@@ -269,6 +360,7 @@ class ProjectsListingViewTests(TestCase):
             title="Museum Beta",
             slug="museum-beta",
             category=self.museums,
+            sort_order=1,
             customer_name="Client",
             year=2025,
             type="Type",
@@ -284,6 +376,7 @@ class ProjectsListingViewTests(TestCase):
             title="Education Gamma",
             slug="education-gamma",
             category=self.education,
+            sort_order=3,
             customer_name="Client",
             year=2025,
             type="Type",
@@ -299,6 +392,7 @@ class ProjectsListingViewTests(TestCase):
             title="Education Delta",
             slug="education-delta",
             category=self.education,
+            sort_order=2,
             customer_name="Client",
             year=2025,
             type="Type",
@@ -334,6 +428,9 @@ class ProjectsListingViewTests(TestCase):
         self.assertContains(response, 'hx-select="#projectsListingShell"')
         self.assertContains(response, 'hx-swap="outerHTML show:none"')
         self.assertContains(response, 'hx-push-url="true"')
+        html = response.content.decode("utf-8")
+        self.assertLess(html.find("Museum Beta"), html.find("Education Delta"))
+        self.assertLess(html.find("Education Delta"), html.find("Education Gamma"))
         self.assertContains(response, "Education Delta")
         self.assertContains(response, "Education Gamma")
         self.assertContains(response, "Museum Beta")
@@ -358,6 +455,8 @@ class ProjectsListingViewTests(TestCase):
         self.assertContains(response, 'hx-swap="outerHTML show:none"')
         self.assertContains(response, f'href="{build_public_project_category_path(self.museums.slug)}"')
         self.assertContains(response, 'aria-current="page"')
+        html = response.content.decode("utf-8")
+        self.assertLess(html.find("Museum Beta"), html.find("Museum Alpha"))
         self.assertContains(response, "Museum Alpha")
         self.assertContains(response, "Museum Beta")
         self.assertNotContains(response, "Education Gamma")
@@ -509,6 +608,7 @@ class ProjectsListingViewTests(TestCase):
         self.assertIn(f'"@id": "{base_url}/projects/#item-list"', html)
         self.assertIn(f'"url": "{base_url}/projects/"', html)
         self.assertIn(f'"url": "{base_url}/"', html)
+        self.assertNotIn("ItemListOrderDescending", html)
 
     def test_empty_category_page_renders_empty_state(self):
         response = self.client.get(reverse("projects:projects_category_list", kwargs={"slug": self.empty_category.slug}))
@@ -630,11 +730,12 @@ class ProjectApiTests(TestCase):
         )
         self.assertNotIn("video.mp4", [image["url"] for image in item["images"]])
 
-    def test_all_projects_endpoint_paginates_with_current_page(self):
+    def test_all_projects_endpoint_paginates_in_sort_order_with_empty_values_last(self):
         second_visible = Projects.objects.create(
             title="Second Visible",
             slug="second-visible-project",
             category=self.category,
+            sort_order=2,
             customer_name="Client",
             year=2025,
             type="Type",
@@ -647,6 +748,19 @@ class ProjectApiTests(TestCase):
             title="Third Visible",
             slug="third-visible-project",
             category=self.category,
+            sort_order=1,
+            customer_name="Client",
+            year=2025,
+            type="Type",
+            body_html="<p>Body</p>",
+            seo_title="SEO",
+            seo_description="SEO",
+            is_published=True,
+        )
+        fourth_visible = Projects.objects.create(
+            title="Fourth Visible",
+            slug="fourth-visible-project",
+            category=self.category,
             customer_name="Client",
             year=2025,
             type="Type",
@@ -658,19 +772,23 @@ class ProjectApiTests(TestCase):
         now = timezone.now()
         Projects.objects.filter(pk=self.project.pk).update(created_at=now - timedelta(minutes=3))
         Projects.objects.filter(pk=second_visible.pk).update(created_at=now - timedelta(minutes=2))
-        Projects.objects.filter(pk=third_visible.pk).update(created_at=now - timedelta(minutes=1))
+        Projects.objects.filter(pk=third_visible.pk).update(created_at=now - timedelta(minutes=4))
+        Projects.objects.filter(pk=fourth_visible.pk).update(created_at=now - timedelta(minutes=1))
 
-        response_page_1 = self.client.get(reverse("projects:get_all_projects"), {"limit": 2, "page": 1})
+        response_page_1 = self.client.get(reverse("projects:get_all_projects"), {"limit": 3, "page": 1})
 
         self.assertEqual(response_page_1.status_code, 200)
         payload_page_1 = response_page_1.json()
         self.assertEqual(payload_page_1["current_page"], 1)
         self.assertTrue(payload_page_1["has_next"])
         self.assertEqual(payload_page_1["next_page"], 2)
-        self.assertEqual(len(payload_page_1["data"]), 2)
-        self.assertEqual({entry["slug"] for entry in payload_page_1["data"]}, {second_visible.slug, third_visible.slug})
+        self.assertEqual(len(payload_page_1["data"]), 3)
+        self.assertEqual(
+            [entry["slug"] for entry in payload_page_1["data"]],
+            [third_visible.slug, second_visible.slug, fourth_visible.slug],
+        )
 
-        response_page_2 = self.client.get(reverse("projects:get_all_projects"), {"limit": 2, "page": 2})
+        response_page_2 = self.client.get(reverse("projects:get_all_projects"), {"limit": 3, "page": 2})
 
         self.assertEqual(response_page_2.status_code, 200)
         payload_page_2 = response_page_2.json()
@@ -708,6 +826,46 @@ class ProjectApiTests(TestCase):
         self.assertEqual(payload["data"][0]["preview_image_alt"], "Preview alt")
         self.assertEqual(payload["data"][0]["category_title"], self.category.title)
         self.assertEqual(payload["data"][0]["excerpt"], "Excerpt")
+
+    def test_projects_by_category_orders_by_sort_order_with_empty_values_last(self):
+        first_sorted = Projects.objects.create(
+            title="Category First",
+            slug="category-first",
+            category=self.category,
+            sort_order=1,
+            customer_name="Client",
+            year=2025,
+            type="Type",
+            body_html="<p>Body</p>",
+            seo_title="SEO",
+            seo_description="SEO",
+            is_published=True,
+        )
+        second_unsorted = Projects.objects.create(
+            title="Category Second",
+            slug="category-second",
+            category=self.category,
+            customer_name="Client",
+            year=2025,
+            type="Type",
+            body_html="<p>Body</p>",
+            seo_title="SEO",
+            seo_description="SEO",
+            is_published=True,
+        )
+        now = timezone.now()
+        Projects.objects.filter(pk=self.project.pk).update(created_at=now - timedelta(minutes=2))
+        Projects.objects.filter(pk=first_sorted.pk).update(created_at=now - timedelta(minutes=3))
+        Projects.objects.filter(pk=second_unsorted.pk).update(created_at=now - timedelta(minutes=1))
+
+        response = self.client.get(f"/api/projects/category/{self.category.slug}/")
+
+        self.assertEqual(response.status_code, 200)
+        payload = response.json()
+        self.assertEqual(
+            [item["slug"] for item in payload["data"]],
+            [first_sorted.slug, second_unsorted.slug, self.project.slug],
+        )
 
     def test_explicit_category_endpoint_matches_legacy_category_payload(self):
         legacy_response = self.client.get(f"/api/projects/{self.category.slug}")
@@ -954,6 +1112,146 @@ class ProjectCategoryAdminTests(TestCase):
         self.assertEqual(category.canonical_url, "https://example.com/projects/category/architecture/")
 
 
+class ProjectsAdminTests(TestCase):
+    def setUp(self):
+        self.user = get_user_model().objects.create_superuser(
+            username="projects-admin",
+            email="projects-admin@example.com",
+            password="password123",
+        )
+        self.category = ProjectCategories.objects.create(title="Museums", slug="museums-project-admin")
+        self.project = Projects.objects.create(
+            title="Admin Project",
+            slug="admin-project",
+            category=self.category,
+            customer_name="Client",
+            year=2025,
+            type="Type",
+            body_html="<p>Body</p>",
+            seo_title="SEO",
+            seo_description="SEO",
+            is_published=True,
+        )
+
+    def test_projects_admin_change_page_contains_sort_order_field(self):
+        self.client.force_login(self.user)
+        response = self.client.get(reverse("admin:projects_projects_change", args=[self.project.pk]))
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, 'name="sort_order"')
+
+    def test_projects_admin_form_saves_sort_order_and_allows_blank(self):
+        from projects.admin import ProjectsAdminForm
+
+        numbered_form = ProjectsAdminForm(
+            data={
+                "title": "Sorted project",
+                "slug": "sorted-project",
+                "category": self.category.pk,
+                "sort_order": "7",
+                "customer_name": "Client",
+                "year": "2025",
+                "type": "Type",
+                "body_html": "<p>Body</p>",
+                "excerpt": "Excerpt",
+                "preview_image": "",
+                "preview_image_alt": "",
+                "seo_title": "SEO title",
+                "seo_description": "SEO description",
+                "seo_keywords": "",
+                "seo_robots": "index,follow",
+                "canonical_url": "",
+                "is_published": "on",
+            }
+        )
+
+        self.assertTrue(numbered_form.is_valid(), numbered_form.errors)
+        numbered_project = numbered_form.save()
+        self.assertEqual(numbered_project.sort_order, 7)
+
+        blank_form = ProjectsAdminForm(
+            data={
+                "title": "Unsorted project",
+                "slug": "unsorted-project",
+                "category": self.category.pk,
+                "sort_order": "",
+                "customer_name": "Client",
+                "year": "2025",
+                "type": "Type",
+                "body_html": "<p>Body</p>",
+                "excerpt": "Excerpt",
+                "preview_image": "",
+                "preview_image_alt": "",
+                "seo_title": "SEO title",
+                "seo_description": "SEO description",
+                "seo_keywords": "",
+                "seo_robots": "index,follow",
+                "canonical_url": "",
+                "is_published": "",
+            }
+        )
+
+        self.assertTrue(blank_form.is_valid(), blank_form.errors)
+        blank_project = blank_form.save()
+        self.assertIsNone(blank_project.sort_order)
+
+    def test_projects_admin_changelist_orders_by_sort_order_with_empty_values_last(self):
+        first = Projects.objects.create(
+            title="Admin First",
+            slug="admin-first",
+            category=self.category,
+            sort_order=1,
+            customer_name="Client",
+            year=2025,
+            type="Type",
+            body_html="<p>Body</p>",
+            seo_title="SEO",
+            seo_description="SEO",
+            is_published=True,
+        )
+        second = Projects.objects.create(
+            title="Admin Second",
+            slug="admin-second",
+            category=self.category,
+            sort_order=2,
+            customer_name="Client",
+            year=2025,
+            type="Type",
+            body_html="<p>Body</p>",
+            seo_title="SEO",
+            seo_description="SEO",
+            is_published=True,
+        )
+        unsorted = Projects.objects.create(
+            title="Admin Unsorted",
+            slug="admin-unsorted",
+            category=self.category,
+            customer_name="Client",
+            year=2025,
+            type="Type",
+            body_html="<p>Body</p>",
+            seo_title="SEO",
+            seo_description="SEO",
+            is_published=True,
+        )
+        now = timezone.now()
+        Projects.objects.filter(pk=first.pk).update(created_at=now - timedelta(minutes=3))
+        Projects.objects.filter(pk=second.pk).update(created_at=now - timedelta(minutes=2))
+        Projects.objects.filter(pk=unsorted.pk).update(created_at=now - timedelta(minutes=1))
+
+        request = RequestFactory().get(reverse("admin:projects_projects_changelist"))
+        request.user = self.user
+        model_admin = admin.site._registry[Projects]
+
+        titles = list(
+            model_admin.get_queryset(request)
+            .filter(pk__in=[first.pk, second.pk, unsorted.pk])
+            .values_list("title", flat=True)
+        )
+
+        self.assertEqual(titles, ["Admin First", "Admin Second", "Admin Unsorted"])
+
+
 class ServicePageProjectsAdminTests(TestCase):
     def setUp(self):
         self.user = get_user_model().objects.create_superuser(
@@ -1054,7 +1352,9 @@ class ProjectStaticGenerationSignalTests(TestCase):
                 self.assertIn('/vendor/photoswipe/photoswipe.umd.min.js', generated_html)
                 self.assertIn('/vendor/photoswipe/photoswipe-lightbox.umd.min.js', generated_html)
                 self.assertIn('/js/lightbox.js?v=2026-04-17-1', generated_html)
-                self.assertIn('data-page="projects"', listing_target.read_text(encoding="utf-8"))
+                listing_html = listing_target.read_text(encoding="utf-8")
+                self.assertIn('data-page="projects"', listing_html)
+                self.assertNotIn("ItemListOrderDescending", listing_html)
                 self.assertIn(category.title, category_target.read_text(encoding="utf-8"))
                 self.assertIn("/projects/static-project/", sitemap_path.read_text(encoding="utf-8"))
                 self.assertIn(build_public_projects_path(), sitemap_path.read_text(encoding="utf-8"))

@@ -35,6 +35,12 @@ class Projects(BaseContentItem):
     customer_name = models.CharField(max_length=300, verbose_name="Заказчик")
     year = models.PositiveIntegerField(verbose_name="Год")
     type = models.CharField(max_length=300, verbose_name="Тип проекта")
+    sort_order = models.PositiveIntegerField(
+        null=True,
+        blank=True,
+        db_index=True,
+        verbose_name="Порядок",
+    )
     body_html = models.TextField(blank=True, default="", verbose_name="Body HTML")
     excerpt = models.TextField(blank=True, default="", verbose_name="Excerpt")
     created_at = models.DateTimeField(auto_now_add=True, verbose_name="Дата создания")

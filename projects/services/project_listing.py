@@ -9,7 +9,7 @@ from urllib.parse import urlsplit
 
 from django.conf import settings
 from django.core.paginator import Paginator
-from django.db.models import Prefetch, QuerySet
+from django.db.models import Case, IntegerField, Prefetch, QuerySet, Value, When
 from django.template.loader import render_to_string
 from django.utils.safestring import mark_safe
 
@@ -80,6 +80,16 @@ def _build_public_url(path: str) -> str:
     return f"{base_url}/{normalized_path}"
 
 
+def apply_projects_listing_ordering(queryset: QuerySet[Projects]) -> QuerySet[Projects]:
+    return queryset.annotate(
+        _sort_order_is_null=Case(
+            When(sort_order__isnull=True, then=Value(1)),
+            default=Value(0),
+            output_field=IntegerField(),
+        )
+    ).order_by("_sort_order_is_null", "sort_order", "-created_at", "-pk")
+
+
 def _get_public_cms_base_url() -> str:
     return getattr(settings, "CMS_PUBLIC_BASE_URL", DEFAULT_PUBLIC_CMS_BASE_URL).rstrip("/")
 
@@ -112,11 +122,10 @@ def get_published_projects_queryset(
     category_slug: str | None = None,
     include_images: bool = False,
 ) -> QuerySet[Projects]:
-    queryset = (
+    queryset = apply_projects_listing_ordering(
         Projects.objects.select_related("category")
         .filter(is_published=True)
         .exclude(seo_robots__icontains="noindex")
-        .order_by("-created_at")
     )
 
     if category_slug:
@@ -437,7 +446,6 @@ def _build_projects_collection_json_ld(
             {
                 "@type": "ItemList",
                 "@id": item_list_id,
-                "itemListOrder": "https://schema.org/ItemListOrderDescending",
                 "numberOfItems": len(item_list_elements),
                 "itemListElement": item_list_elements,
             }
