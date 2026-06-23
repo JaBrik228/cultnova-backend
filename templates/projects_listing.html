@@ -5,7 +5,7 @@
         <meta name="viewport" content="width=device-width, initial-scale=1.0" />
         <meta name="robots" content="{{ page.robots }}" />
 
-        <title>{{ page.title }} | Cultnova</title>
+        <title>{{ page.browser_title }}</title>
         <meta name="description" content="{{ page.description }}" />
         {% if page.keywords %}
         <meta name="keywords" content="{{ page.keywords }}" />
@@ -33,7 +33,7 @@
 
         <meta property="og:type" content="website" />
         <meta property="og:url" content="{{ page.canonical }}" />
-        <meta property="og:title" content="{{ page.title }} | Cultnova" />
+        <meta property="og:title" content="{{ page.browser_title }}" />
         <meta property="og:description" content="{{ page.description }}" />
         {% if page.share_image %}
         <meta property="og:image" content="{{ page.share_image }}" />
@@ -41,7 +41,7 @@
         {% endif %}
 
         <meta name="twitter:card" content="summary_large_image" />
-        <meta name="twitter:title" content="{{ page.title }} | Cultnova" />
+        <meta name="twitter:title" content="{{ page.browser_title }}" />
         <meta name="twitter:description" content="{{ page.description }}" />
         {% if page.share_image %}
         <meta name="twitter:image" content="{{ page.share_image }}" />
@@ -77,7 +77,7 @@
                 <div class="container">
                     <div
                         id="projectsListingShell"
-                        data-page-title="{{ page.title }} | Cultnova"
+                        data-page-title="{{ page.browser_title }}"
                         data-projects-endpoint="{{ projects_feed.endpoint }}"
                         data-projects-page-size="{{ projects_feed.page_size }}"
                         data-projects-current-page="{{ projects_feed.current_page }}"

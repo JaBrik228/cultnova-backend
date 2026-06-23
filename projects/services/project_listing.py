@@ -62,6 +62,15 @@ def _normalize_text(value: str) -> str:
     return value.strip()
 
 
+def _build_browser_title(title: str) -> str:
+    normalized_title = _normalize_text(title)
+    if not normalized_title:
+        return "Cultnova"
+    if "cultnova" in normalized_title.lower():
+        return normalized_title
+    return f"{normalized_title} | Cultnova"
+
+
 def _build_public_url(path: str) -> str:
     normalized_path = _normalize_text(path)
     if not normalized_path:
@@ -477,8 +486,11 @@ def build_projects_listing_context(
     projects = [build_project_card_payload(project) for project in projects_page.object_list]
 
     if active_category is None:
-        page_title = "Проекты"
-        page_description = "Проекты компании Cultnova."
+        page_title = "Реализованные проекты компании «Cultnova»"
+        page_description = (
+            "Портфолио реализованных проектов: комплексное проектирование музеев, "
+            "оформление выставок и интеграция передовых мультимедийных решений в культурных объектах🏛."
+        )
         page_url = build_public_projects_url()
         page_canonical = page_url
         page_keywords = ""
@@ -543,6 +555,7 @@ def build_projects_listing_context(
     return {
         "page": {
             "title": page_title,
+            "browser_title": _build_browser_title(page_title),
             "description": page_description,
             "keywords": page_keywords,
             "url": page_canonical,

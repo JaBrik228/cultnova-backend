@@ -421,7 +421,7 @@ class ProjectsListingViewTests(TestCase):
         self.assertContains(response, 'data-projects-current-page="1"')
         self.assertContains(response, 'data-projects-next-page="2"')
         self.assertContains(response, 'data-projects-has-next="1"')
-        self.assertContains(response, 'data-page-title="Проекты | Cultnova"')
+        self.assertContains(response, 'data-page-title="Реализованные проекты компании «Cultnova»"')
         self.assertContains(response, 'hx-history-elt')
         self.assertContains(response, 'hx-boost="true"')
         self.assertContains(response, 'hx-target="#projectsListingShell"')
@@ -539,8 +539,11 @@ class ProjectsListingViewTests(TestCase):
 
         self.assertEqual(response.status_code, 200)
         html = response.content.decode("utf-8")
-        self.assertIn("<title>Проекты | Cultnova</title>", html)
-        self.assertIn('<meta name="description" content="Проекты компании Cultnova." />', html)
+        self.assertIn("<title>Реализованные проекты компании «Cultnova»</title>", html)
+        self.assertIn(
+            '<meta name="description" content="Портфолио реализованных проектов: комплексное проектирование музеев, оформление выставок и интеграция передовых мультимедийных решений в культурных объектах🏛." />',
+            html,
+        )
         self.assertNotIn('<meta name="keywords"', html)
         self.assertIn('<meta name="robots" content="index,follow" />', html)
         self.assertIn(">Проекты</h1>", html)
@@ -561,8 +564,11 @@ class ProjectsListingViewTests(TestCase):
 
         self.assertEqual(response.status_code, 200)
         html = response.content.decode("utf-8")
-        self.assertIn("<title>Проекты | Cultnova</title>", html)
-        self.assertIn('<meta name="description" content="Проекты компании Cultnova." />', html)
+        self.assertIn("<title>Реализованные проекты компании «Cultnova»</title>", html)
+        self.assertIn(
+            '<meta name="description" content="Портфолио реализованных проектов: комплексное проектирование музеев, оформление выставок и интеграция передовых мультимедийных решений в культурных объектах🏛." />',
+            html,
+        )
         self.assertIn(">Проекты</h1>", html)
 
     def test_projects_root_page_uses_single_combined_stylesheet(self):
