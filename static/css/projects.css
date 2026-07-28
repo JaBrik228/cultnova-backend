@@ -320,13 +320,13 @@ body.has-custom-cursor .super-button {
 
 @media (max-width: 900px) {
     .projects-page {
-        padding-top: 120px;
+        padding-top: 0;
     }
 }
 
 @media (max-width: 768px) {
     .projects-page {
-        padding-top: 108px;
+        padding-top: 0;
     }
 
     .projects {
@@ -348,7 +348,7 @@ body.has-custom-cursor .super-button {
 
 @media (max-width: 640px) {
     .projects-page {
-        padding-top: 96px;
+        padding-top: 0;
     }
 
     .projects__feed {
