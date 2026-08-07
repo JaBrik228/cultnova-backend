@@ -5,6 +5,7 @@ from django import forms
 from django.conf import settings
 from django.contrib import admin
 from django.db import connection
+from django.db.models import Prefetch
 from django.http import HttpResponse, JsonResponse
 from django.urls import path, reverse
 from django.utils.html import format_html, mark_safe
@@ -116,6 +117,9 @@ class ProjectsAdminForm(forms.ModelForm):
         preview_image_alt = _trim(cleaned_data.get("preview_image_alt")) or ""
         upload_image = cleaned_data.get("upload_image")
 
+        if not cleaned_data.get("categories"):
+            self.add_error("categories", "Выберите хотя бы одну категорию.")
+
         if not body_html.strip():
             self.add_error("body_html", "Project body is required.")
         else:
@@ -166,6 +170,7 @@ class ProjectsAdminForm(forms.ModelForm):
 
         if commit:
             instance.save()
+            self._save_m2m()
 
         return instance
 
@@ -352,7 +357,8 @@ class ServicePageProjectsAdmin(admin.ModelAdmin):
 class ProjectCategoriesAdmin(admin.ModelAdmin):
     form = ProjectCategoriesAdminForm
     save_on_top = True
-    list_display = ("title", "slug", "created_at")
+    list_display = ("title", "sort_order", "slug", "created_at")
+    list_editable = ("sort_order",)
     search_fields = ("title", "slug", "seo_title", "seo_description")
     prepopulated_fields = {"slug": ("title",)}
     readonly_fields = ("year_token_hint", "category_public_url", "seo_snippet_preview", "created_at")
@@ -360,7 +366,7 @@ class ProjectCategoriesAdmin(admin.ModelAdmin):
         (
             "Content",
             {
-                "fields": ("title", "slug"),
+                "fields": ("title", "slug", "sort_order"),
             },
         ),
         (
@@ -387,6 +393,15 @@ class ProjectCategoriesAdmin(admin.ModelAdmin):
             },
         ),
     )
+
+    def get_deleted_objects(self, objs, request):
+        deleted_objects, model_count, perms_needed, protected = super().get_deleted_objects(objs, request)
+        category_ids = [obj.pk for obj in objs if obj.pk]
+        orphaned_projects = ProjectCategories.objects.filter(
+            pk__in=category_ids
+        )._projects_orphaned_by_delete()
+        protected.extend(f"Проект: {project}" for project in orphaned_projects)
+        return deleted_objects, model_count, perms_needed, protected
 
     def category_public_url(self, obj):
         if not obj.pk:
@@ -439,13 +454,14 @@ class ProjectCategoriesAdmin(admin.ModelAdmin):
 
 @admin.register(Projects)
 class ProjectsAdmin(admin.ModelAdmin):
-    list_display = ("title", "sort_order", "slug", "category", "is_published", "created_at", "updated_at")
+    list_display = ("title", "sort_order", "slug", "categories_display", "is_published", "created_at", "updated_at")
     list_editable = ("sort_order", "is_published")
-    list_filter = ("category", "is_published", "created_at", "updated_at")
+    list_filter = ("categories", "is_published", "created_at", "updated_at")
     search_fields = ("title", "slug", "customer_name", "seo_title", "seo_description", "excerpt")
     prepopulated_fields = {"slug": ("title",)}
     inlines = [ContentBlockInline]
     form = ProjectsAdminForm
+    autocomplete_fields = ("categories",)
     save_on_top = True
     readonly_fields = (
         "preview_image",
@@ -462,7 +478,7 @@ class ProjectsAdmin(admin.ModelAdmin):
                 "fields": (
                     "title",
                     "slug",
-                    "category",
+                    "categories",
                     "sort_order",
                     "customer_name",
                     "year",
@@ -508,8 +524,18 @@ class ProjectsAdmin(admin.ModelAdmin):
     )
 
     def get_queryset(self, request):
-        queryset = super().get_queryset(request).select_related("category")
+        queryset = super().get_queryset(request).prefetch_related(
+            Prefetch(
+                "categories",
+                queryset=ProjectCategories.objects.ordered(),
+                to_attr="ordered_categories",
+            )
+        )
         return apply_projects_listing_ordering(queryset)
+
+    @admin.display(description="Категории")
+    def categories_display(self, obj):
+        return " · ".join(category.title for category in obj.get_ordered_categories())
 
     def get_form(self, request, obj=None, change=False, **kwargs):
         form = super().get_form(request, obj, change, **kwargs)

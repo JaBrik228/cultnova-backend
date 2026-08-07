@@ -1,4 +1,4 @@
-﻿import tempfile
+import tempfile
 from pathlib import Path
 from datetime import datetime, timedelta, timezone as dt_timezone
 from unittest.mock import patch
@@ -9,6 +9,7 @@ from django.contrib import admin
 from django.contrib.auth import get_user_model
 from django.core.files.uploadedfile import SimpleUploadedFile
 from django.db import connection
+from django.db.models.deletion import ProtectedError
 from django.db.migrations.executor import MigrationExecutor
 from django.test import RequestFactory, TestCase, TransactionTestCase, override_settings
 from django.urls import reverse
@@ -183,6 +184,86 @@ class ProjectSortOrderMigrationTests(MigrationTestCase):
         )
 
 
+class ProjectCategoriesManyToManyMigrationTests(MigrationTestCase):
+    migrate_from = ("projects", "0013_projects_sort_order")
+    migrate_to = ("projects", "0014_project_categories_many_to_many")
+
+    def set_up_before_migration(self, apps):
+        ProjectCategories = apps.get_model("projects", "ProjectCategories")
+        Projects = apps.get_model("projects", "Projects")
+
+        older = ProjectCategories.objects.create(title="Older", slug="older")
+        newer = ProjectCategories.objects.create(title="Newer", slug="newer")
+        now = timezone.now()
+        ProjectCategories.objects.filter(pk=older.pk).update(created_at=now - timedelta(days=1))
+        ProjectCategories.objects.filter(pk=newer.pk).update(created_at=now)
+
+        self.project_category_pairs = []
+        for category, slug in ((older, "old-project"), (newer, "new-project")):
+            project = Projects.objects.create(
+                title=slug,
+                slug=slug,
+                category_id=category.pk,
+                customer_name="Client",
+                year=2025,
+                type="Type",
+                body_html="<p>Body</p>",
+                seo_title="SEO",
+                seo_description="SEO",
+            )
+            self.project_category_pairs.append((project.pk, category.pk))
+
+    def test_fk_values_and_global_order_are_preserved_without_duplicate_pairs(self):
+        ProjectCategories = self.apps.get_model("projects", "ProjectCategories")
+        Projects = self.apps.get_model("projects", "Projects")
+
+        self.assertEqual(
+            list(ProjectCategories.objects.order_by("sort_order").values_list("slug", "sort_order")),
+            [("newer", 1), ("older", 2)],
+        )
+        self.assertEqual(
+            sorted(Projects.categories.through.objects.values_list("projects_id", "projectcategories_id")),
+            sorted(self.project_category_pairs),
+        )
+        self.assertEqual(
+            Projects.categories.through.objects.count(),
+            Projects.categories.through.objects.values("projects_id", "projectcategories_id").distinct().count(),
+        )
+
+
+class ProjectCategoriesManyToManyReverseMigrationTests(MigrationTestCase):
+    migrate_from = ("projects", "0014_project_categories_many_to_many")
+    migrate_to = ("projects", "0013_projects_sort_order")
+
+    def set_up_before_migration(self, apps):
+        ProjectCategories = apps.get_model("projects", "ProjectCategories")
+        Projects = apps.get_model("projects", "Projects")
+
+        first = ProjectCategories.objects.create(title="First", slug="first-reverse", sort_order=1)
+        second = ProjectCategories.objects.create(title="Second", slug="second-reverse", sort_order=2)
+        project = Projects.objects.create(
+            title="Reverse Project",
+            slug="reverse-project",
+            customer_name="Client",
+            year=2025,
+            type="Type",
+            body_html="<p>Body</p>",
+            seo_title="SEO",
+            seo_description="SEO",
+        )
+        project.categories.add(second, first)
+        self.project_id = project.pk
+        self.first_category_id = first.pk
+
+    def test_reverse_uses_first_globally_ordered_category(self):
+        Projects = self.apps.get_model("projects", "Projects")
+
+        self.assertEqual(
+            Projects.objects.get(pk=self.project_id).category_id,
+            self.first_category_id,
+        )
+
+
 class ProjectCategoryCurrentYearHelperTests(TestCase):
     def test_current_year_uses_moscow_timezone(self):
         boundary_moment = datetime(2025, 12, 31, 21, 30, tzinfo=dt_timezone.utc)
@@ -194,6 +275,13 @@ class ProjectRenderingTests(TestCase):
         self.category = ProjectCategories.objects.create(title="Museums", slug="museums")
 
     def test_build_project_render_context_builds_feature_media_related_and_seo(self):
+        secondary_category = ProjectCategories.objects.create(
+            title="Education",
+            slug="education-rendering",
+            sort_order=1,
+        )
+        self.category.sort_order = 2
+        self.category.save(update_fields=["sort_order"])
         project = Projects.objects.create(
             title="Main Project",
             slug="main-project",
@@ -209,6 +297,7 @@ class ProjectRenderingTests(TestCase):
             seo_description="SEO description",
             is_published=True,
         )
+        project.categories.add(secondary_category)
 
         ProjectsContentBlock.objects.create(
             project=project,
@@ -227,7 +316,7 @@ class ProjectRenderingTests(TestCase):
             caption="Video caption",
         )
 
-        Projects.objects.create(
+        related_project = Projects.objects.create(
             title="Related",
             slug="related",
             category=self.category,
@@ -239,6 +328,7 @@ class ProjectRenderingTests(TestCase):
             seo_description="R",
             is_published=True,
         )
+        related_project.categories.add(secondary_category)
 
         context = build_project_render_context(project)
         rendered = context["project"]
@@ -248,6 +338,9 @@ class ProjectRenderingTests(TestCase):
         self.assertEqual(len(rendered.gallery_media), 1)
         self.assertTrue(rendered.share_links)
         self.assertTrue(context["related_projects"])
+        self.assertEqual(len(context["related_projects"]), 1)
+        self.assertEqual(rendered.categories_text, "Education · Museums")
+        self.assertEqual(context["related_projects"][0]["categories_text"], "Education · Museums")
         self.assertIn("CreativeWork", context["project_json_ld"])
 
 
@@ -411,6 +504,21 @@ class ProjectsListingViewTests(TestCase):
         Projects.objects.filter(pk=self.third_project.pk).update(created_at=now - timedelta(minutes=2))
         Projects.objects.filter(pk=self.fourth_project.pk).update(created_at=now - timedelta(minutes=1))
 
+    def test_all_tab_stays_first_and_initial_cards_show_all_categories(self):
+        self.education.sort_order = 1
+        self.education.save(update_fields=["sort_order"])
+        self.museums.sort_order = 2
+        self.museums.save(update_fields=["sort_order"])
+        self.second_project.categories.add(self.education)
+
+        response = self.client.get(reverse("projects:projects_list"))
+
+        self.assertEqual(
+            [category["title"] for category in response.context["categories"][:3]],
+            ["Все", "Education", "Museums"],
+        )
+        self.assertContains(response, "Education · Museums")
+
     def test_projects_root_page_renders_first_batch_and_load_more_state(self):
         response = self.client.get(reverse("projects:projects_list"))
 
@@ -421,7 +529,7 @@ class ProjectsListingViewTests(TestCase):
         self.assertContains(response, 'data-projects-current-page="1"')
         self.assertContains(response, 'data-projects-next-page="2"')
         self.assertContains(response, 'data-projects-has-next="1"')
-        self.assertContains(response, 'data-page-title="Реализованные проекты компании «Cultnova»"')
+        self.assertContains(response, 'data-page-title="Реализованные проекты компании «CultNova»"')
         self.assertContains(response, 'hx-history-elt')
         self.assertContains(response, 'hx-boost="true"')
         self.assertContains(response, 'hx-target="#projectsListingShell"')
@@ -451,7 +559,7 @@ class ProjectsListingViewTests(TestCase):
         self.assertContains(response, 'data-projects-current-page="1"')
         self.assertContains(response, 'data-projects-next-page=""')
         self.assertContains(response, 'data-projects-has-next="0"')
-        self.assertContains(response, 'data-page-title="Museums | Проекты | Cultnova"')
+        self.assertContains(response, 'data-page-title="Museums | Проекты | CultNova"')
         self.assertContains(response, 'hx-swap="outerHTML show:none"')
         self.assertContains(response, f'href="{build_public_project_category_path(self.museums.slug)}"')
         self.assertContains(response, 'aria-current="page"')
@@ -484,7 +592,7 @@ class ProjectsListingViewTests(TestCase):
 
         self.assertEqual(response.status_code, 200)
         html = response.content.decode("utf-8")
-        self.assertIn("<title>Музейные проекты | Cultnova</title>", html)
+        self.assertIn("<title>Музейные проекты | CultNova</title>", html)
         self.assertIn('<meta name="description" content="Подборка музейных проектов Cultnova." />', html)
         self.assertIn('<meta name="keywords" content="музеи, проекты, cultnova" />', html)
         self.assertIn('<meta name="robots" content="noindex,nofollow" />', html)
@@ -512,7 +620,7 @@ class ProjectsListingViewTests(TestCase):
 
         self.assertEqual(response.status_code, 200)
         html = response.content.decode("utf-8")
-        self.assertIn(f"<title>Музейные проекты {current_year} | Cultnova</title>", html)
+        self.assertIn(f"<title>Музейные проекты {current_year} | CultNova</title>", html)
         self.assertIn(
             f'<meta name="description" content="Подборка музейных проектов Cultnova за {current_year}." />',
             html,
@@ -527,7 +635,7 @@ class ProjectsListingViewTests(TestCase):
 
         self.assertEqual(response.status_code, 200)
         html = response.content.decode("utf-8")
-        self.assertIn("<title>Museums | Проекты | Cultnova</title>", html)
+        self.assertIn("<title>Museums | Проекты | CultNova</title>", html)
         self.assertIn('<meta name="description" content="Проекты Cultnova в категории «Museums»." />', html)
         self.assertNotIn('<meta name="keywords"', html)
         self.assertIn('<meta name="robots" content="index,follow" />', html)
@@ -539,7 +647,7 @@ class ProjectsListingViewTests(TestCase):
 
         self.assertEqual(response.status_code, 200)
         html = response.content.decode("utf-8")
-        self.assertIn("<title>Реализованные проекты компании «Cultnova»</title>", html)
+        self.assertIn("<title>Реализованные проекты компании «CultNova»</title>", html)
         self.assertIn(
             '<meta name="description" content="Портфолио реализованных проектов: комплексное проектирование музеев, оформление выставок и интеграция передовых мультимедийных решений в культурных объектах🏛." />',
             html,
@@ -564,7 +672,7 @@ class ProjectsListingViewTests(TestCase):
 
         self.assertEqual(response.status_code, 200)
         html = response.content.decode("utf-8")
-        self.assertIn("<title>Реализованные проекты компании «Cultnova»</title>", html)
+        self.assertIn("<title>Реализованные проекты компании «CultNova»</title>", html)
         self.assertIn(
             '<meta name="description" content="Портфолио реализованных проектов: комплексное проектирование музеев, оформление выставок и интеграция передовых мультимедийных решений в культурных объектах🏛." />',
             html,
@@ -682,7 +790,8 @@ class ProjectApiTests(TestCase):
             is_published=True,
         )
 
-        response = self.client.get(reverse("projects:get_all_projects"))
+        with self.assertNumQueries(4):
+            response = self.client.get(reverse("projects:get_all_projects"))
 
         self.assertEqual(response.status_code, 200)
         payload = response.json()
@@ -702,6 +811,61 @@ class ProjectApiTests(TestCase):
         self.assertNotIn(self.hidden_project.slug, [entry["slug"] for entry in payload["data"]])
         self.assertNotIn("seo-closed-project", [entry["slug"] for entry in payload["data"]])
 
+    def test_multi_category_payload_is_ordered_and_keeps_legacy_aliases(self):
+        self.category.sort_order = 20
+        self.category.save(update_fields=["sort_order"])
+        second_category = ProjectCategories.objects.create(
+            title="Education",
+            slug="education-api",
+            sort_order=10,
+        )
+        self.project.categories.add(second_category)
+
+        with self.assertNumQueries(4):
+            response = self.client.get(reverse("projects:get_all_projects"))
+
+        self.assertEqual(response.status_code, 200)
+        item = response.json()["data"][0]
+        self.assertEqual(
+            item["categories"],
+            [
+                {
+                    "id": second_category.pk,
+                    "title": second_category.title,
+                    "slug": second_category.slug,
+                    "sort_order": 10,
+                },
+                {
+                    "id": self.category.pk,
+                    "title": self.category.title,
+                    "slug": self.category.slug,
+                    "sort_order": 20,
+                },
+            ],
+        )
+        self.assertEqual(item["category_title"], second_category.title)
+        self.assertEqual(item["category"], item["categories"][0])
+
+        for category in (self.category, second_category):
+            category_response = self.client.get(
+                reverse("projects:get_projects_by_category_explicit", kwargs={"slug": category.slug})
+            )
+            matching_slugs = [entry["slug"] for entry in category_response.json()["data"]]
+            self.assertEqual(matching_slugs.count(self.project.slug), 1)
+
+    def test_categories_endpoint_uses_global_order_and_includes_sort_order(self):
+        self.category.sort_order = None
+        self.category.save(update_fields=["sort_order"])
+        first = ProjectCategories.objects.create(title="Zulu", slug="zulu-api", sort_order=1)
+        second = ProjectCategories.objects.create(title="Alpha", slug="alpha-api", sort_order=2)
+
+        response = self.client.get(reverse("projects:get_all_categories"))
+
+        self.assertEqual(response.status_code, 200)
+        payload = response.json()
+        self.assertEqual([item["slug"] for item in payload], [first.slug, second.slug, self.category.slug])
+        self.assertEqual([item["sort_order"] for item in payload], [1, 2, None])
+
     def test_all_projects_endpoint_includes_images_with_alt_and_order(self):
         ProjectsContentBlock.objects.create(
             project=self.project,
@@ -720,7 +884,7 @@ class ProjectApiTests(TestCase):
             caption="Video caption",
         )
 
-        with self.assertNumQueries(3):
+        with self.assertNumQueries(4):
             response = self.client.get(reverse("projects:get_all_projects"))
 
         self.assertEqual(response.status_code, 200)
@@ -960,6 +1124,9 @@ class ProjectApiTests(TestCase):
         self.assertEqual(payload["slug"], self.project.slug)
         self.assertIn("body_html", payload)
         self.assertIn("seo", payload)
+        self.assertEqual(payload["categories"][0]["id"], self.category.pk)
+        self.assertEqual(payload["category"], payload["categories"][0])
+        self.assertEqual(payload["category_title"], self.category.title)
 
     def test_project_html_detail_route_available(self):
         response = self.client.get(f"/projects/{self.project.slug}/")
@@ -1117,6 +1284,12 @@ class ProjectCategoryAdminTests(TestCase):
         self.assertEqual(category.seo_robots, "noindex,nofollow")
         self.assertEqual(category.canonical_url, "https://example.com/projects/category/architecture/")
 
+    def test_category_admin_exposes_editable_global_sort_order(self):
+        model_admin = admin.site._registry[ProjectCategories]
+
+        self.assertIn("sort_order", model_admin.list_display)
+        self.assertIn("sort_order", model_admin.list_editable)
+
 
 class ProjectsAdminTests(TestCase):
     def setUp(self):
@@ -1149,11 +1322,17 @@ class ProjectsAdminTests(TestCase):
     def test_projects_admin_form_saves_sort_order_and_allows_blank(self):
         from projects.admin import ProjectsAdminForm
 
+        second_category = ProjectCategories.objects.create(
+            title="Education",
+            slug="education-project-admin",
+            sort_order=1,
+        )
+
         numbered_form = ProjectsAdminForm(
             data={
                 "title": "Sorted project",
                 "slug": "sorted-project",
-                "category": self.category.pk,
+                "categories": [self.category.pk, second_category.pk],
                 "sort_order": "7",
                 "customer_name": "Client",
                 "year": "2025",
@@ -1174,12 +1353,16 @@ class ProjectsAdminTests(TestCase):
         self.assertTrue(numbered_form.is_valid(), numbered_form.errors)
         numbered_project = numbered_form.save()
         self.assertEqual(numbered_project.sort_order, 7)
+        self.assertEqual(
+            list(numbered_project.categories.values_list("pk", flat=True)),
+            [second_category.pk, self.category.pk],
+        )
 
         blank_form = ProjectsAdminForm(
             data={
                 "title": "Unsorted project",
                 "slug": "unsorted-project",
-                "category": self.category.pk,
+                "categories": [self.category.pk],
                 "sort_order": "",
                 "customer_name": "Client",
                 "year": "2025",
@@ -1201,62 +1384,131 @@ class ProjectsAdminTests(TestCase):
         blank_project = blank_form.save()
         self.assertIsNone(blank_project.sort_order)
 
-    def test_projects_admin_changelist_orders_by_sort_order_with_empty_values_last(self):
-        first = Projects.objects.create(
-            title="Admin First",
-            slug="admin-first",
-            category=self.category,
+    def test_projects_admin_form_requires_at_least_one_category(self):
+        from projects.admin import ProjectsAdminForm
+
+        form = ProjectsAdminForm(
+            data={
+                "title": "No category",
+                "slug": "no-category",
+                "categories": [],
+                "customer_name": "Client",
+                "year": "2025",
+                "type": "Type",
+                "body_html": "<p>Body</p>",
+                "seo_title": "SEO title",
+                "seo_description": "SEO description",
+                "seo_robots": "index,follow",
+            }
+        )
+
+        self.assertFalse(form.is_valid())
+        self.assertIn("categories", form.errors)
+
+    def test_admin_uses_multiple_category_autocomplete_and_displays_all_categories(self):
+        second_category = ProjectCategories.objects.create(
+            title="Education",
+            slug="education-admin-display",
             sort_order=1,
-            customer_name="Client",
-            year=2025,
-            type="Type",
-            body_html="<p>Body</p>",
-            seo_title="SEO",
-            seo_description="SEO",
-            is_published=True,
         )
-        second = Projects.objects.create(
-            title="Admin Second",
-            slug="admin-second",
-            category=self.category,
-            sort_order=2,
-            customer_name="Client",
-            year=2025,
-            type="Type",
-            body_html="<p>Body</p>",
-            seo_title="SEO",
-            seo_description="SEO",
-            is_published=True,
-        )
-        unsorted = Projects.objects.create(
-            title="Admin Unsorted",
-            slug="admin-unsorted",
-            category=self.category,
-            customer_name="Client",
-            year=2025,
-            type="Type",
-            body_html="<p>Body</p>",
-            seo_title="SEO",
-            seo_description="SEO",
-            is_published=True,
-        )
-        now = timezone.now()
-        Projects.objects.filter(pk=first.pk).update(created_at=now - timedelta(minutes=3))
-        Projects.objects.filter(pk=second.pk).update(created_at=now - timedelta(minutes=2))
-        Projects.objects.filter(pk=unsorted.pk).update(created_at=now - timedelta(minutes=1))
+        self.project.categories.add(second_category)
+        request = RequestFactory().get(reverse("admin:projects_projects_changelist"))
+        request.user = self.user
+        model_admin = admin.site._registry[Projects]
+        project = model_admin.get_queryset(request).get(pk=self.project.pk)
+
+        self.assertEqual(model_admin.autocomplete_fields, ("categories",))
+        self.assertEqual(model_admin.categories_display(project), "Education · Museums")
+        self.assertIn("categories", model_admin.list_filter)
+
+    def test_projects_admin_changelist_orders_by_sort_order_with_empty_values_last(self):
+        projects = []
+        for title, slug, sort_order in (
+            ("Admin First", "admin-first", 1),
+            ("Admin Second", "admin-second", 2),
+            ("Admin Unsorted", "admin-unsorted", None),
+        ):
+            projects.append(
+                Projects.objects.create(
+                    title=title,
+                    slug=slug,
+                    category=self.category,
+                    sort_order=sort_order,
+                    customer_name="Client",
+                    year=2025,
+                    type="Type",
+                    body_html="<p>Body</p>",
+                    seo_title="SEO",
+                    seo_description="SEO",
+                    is_published=True,
+                )
+            )
 
         request = RequestFactory().get(reverse("admin:projects_projects_changelist"))
         request.user = self.user
         model_admin = admin.site._registry[Projects]
-
         titles = list(
             model_admin.get_queryset(request)
-            .filter(pk__in=[first.pk, second.pk, unsorted.pk])
+            .filter(pk__in=[project.pk for project in projects])
             .values_list("title", flat=True)
         )
 
         self.assertEqual(titles, ["Admin First", "Admin Second", "Admin Unsorted"])
 
+
+class ProjectCategoryDeleteGuardTests(TestCase):
+    def setUp(self):
+        self.first = ProjectCategories.objects.create(title="First", slug="first")
+        self.second = ProjectCategories.objects.create(title="Second", slug="second")
+        self.third = ProjectCategories.objects.create(title="Third", slug="third")
+        self.project = Projects.objects.create(
+            title="Guarded Project",
+            slug="guarded-project",
+            customer_name="Client",
+            year=2025,
+            type="Type",
+            body_html="<p>Body</p>",
+            seo_title="SEO",
+            seo_description="SEO",
+        )
+        self.project.categories.add(self.first)
+
+    def test_individual_delete_is_blocked_if_project_would_have_no_categories(self):
+        with self.assertRaises(ProtectedError):
+            self.first.delete()
+
+        self.assertTrue(ProjectCategories.objects.filter(pk=self.first.pk).exists())
+
+    def test_delete_succeeds_when_project_keeps_another_category(self):
+        self.project.categories.add(self.second)
+
+        self.first.delete()
+
+        self.assertEqual(list(self.project.categories.values_list("pk", flat=True)), [self.second.pk])
+
+    def test_bulk_delete_checks_the_entire_deleted_set(self):
+        self.project.categories.set([self.second, self.third])
+
+        with self.assertRaises(ProtectedError):
+            ProjectCategories.objects.filter(pk__in=[self.second.pk, self.third.pk]).delete()
+
+        self.assertEqual(self.project.categories.count(), 2)
+
+    def test_admin_delete_preview_marks_orphaned_project_as_protected(self):
+        request = RequestFactory().get(reverse("admin:projects_projectcategories_delete", args=[self.first.pk]))
+        request.user = get_user_model().objects.create_superuser(
+            username="category-delete-admin",
+            email="category-delete-admin@example.com",
+            password="password123",
+        )
+        model_admin = admin.site._registry[ProjectCategories]
+
+        _deleted, _counts, _permissions, protected = model_admin.get_deleted_objects(
+            [self.first],
+            request,
+        )
+
+        self.assertIn(f"Проект: {self.project}", protected)
 
 class ServicePageProjectsAdminTests(TestCase):
     def setUp(self):
@@ -1325,6 +1577,82 @@ class ServicePageProjectsAdminTests(TestCase):
 
 
 class ProjectStaticGenerationSignalTests(TestCase):
+    @override_settings(SITE_PUBLIC_BASE_URL="https://example.com")
+    def test_category_reorder_rebuilds_detail_and_listing_labels(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            with override_settings(GENERATED_HTML_PAGES_PATH=temp_dir):
+                first = ProjectCategories.objects.create(title="First", slug="first-reorder", sort_order=1)
+                second = ProjectCategories.objects.create(title="Second", slug="second-reorder", sort_order=2)
+                with self.captureOnCommitCallbacks(execute=True):
+                    project = Projects.objects.create(
+                        title="Reordered Project",
+                        slug="reordered-project",
+                        category=first,
+                        customer_name="Client",
+                        year=2025,
+                        type="Type",
+                        body_html="<p>Body</p>",
+                        seo_title="SEO",
+                        seo_description="SEO",
+                        is_published=True,
+                    )
+                    project.categories.add(second)
+
+                root = Path(temp_dir)
+                detail_path = root / "projects" / project.slug / "index.html"
+                listing_path = root / "projects" / "index.html"
+                self.assertIn("First · Second", detail_path.read_text(encoding="utf-8"))
+
+                with self.captureOnCommitCallbacks(execute=True):
+                    first.sort_order = 3
+                    first.save(update_fields=["sort_order"])
+
+                self.assertIn("Second · First", detail_path.read_text(encoding="utf-8"))
+                self.assertIn("Second · First", listing_path.read_text(encoding="utf-8"))
+
+    @override_settings(SITE_PUBLIC_BASE_URL="https://example.com")
+    def test_m2m_add_updates_timestamp_detail_both_listings_and_sitemap(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            with override_settings(GENERATED_HTML_PAGES_PATH=temp_dir):
+                first = ProjectCategories.objects.create(title="First", slug="first-signal", sort_order=2)
+                second = ProjectCategories.objects.create(title="Second", slug="second-signal", sort_order=1)
+                with self.captureOnCommitCallbacks(execute=True):
+                    project = Projects.objects.create(
+                        title="Multi Signal Project",
+                        slug="multi-signal-project",
+                        category=first,
+                        customer_name="Client",
+                        year=2025,
+                        type="Type",
+                        body_html="<p>Body</p>",
+                        seo_title="SEO",
+                        seo_description="SEO",
+                        is_published=True,
+                    )
+
+                older_timestamp = timezone.now() - timedelta(days=1)
+                Projects.objects.filter(pk=project.pk).update(updated_at=older_timestamp)
+
+                with self.captureOnCommitCallbacks(execute=True):
+                    project.categories.add(second)
+
+                project.refresh_from_db()
+                root = Path(temp_dir)
+                detail_html = (root / "projects" / project.slug / "index.html").read_text(encoding="utf-8")
+                sitemap = (root / "sitemap.xml").read_text(encoding="utf-8")
+
+                self.assertGreater(project.updated_at, older_timestamp)
+                self.assertIn("Second · First", detail_html)
+                self.assertIn(
+                    project.title,
+                    (root / "projects" / "category" / first.slug / "index.html").read_text(encoding="utf-8"),
+                )
+                self.assertIn(
+                    project.title,
+                    (root / "projects" / "category" / second.slug / "index.html").read_text(encoding="utf-8"),
+                )
+                self.assertIn(f"/projects/{project.slug}/", sitemap)
+
     @override_settings(SITE_PUBLIC_BASE_URL="https://example.com")
     def test_static_html_is_generated_and_removed_on_unpublish(self):
         with tempfile.TemporaryDirectory() as temp_dir:
@@ -1492,7 +1820,7 @@ class ProjectStaticGenerationSignalTests(TestCase):
                     category = ProjectCategories.objects.create(title="Cat", slug="cat")
 
                 category_target = Path(temp_dir) / "projects" / "category" / category.slug / "index.html"
-                self.assertIn("<title>Cat | Проекты | Cultnova</title>", category_target.read_text(encoding="utf-8"))
+                self.assertIn("<title>Cat | Проекты | CultNova</title>", category_target.read_text(encoding="utf-8"))
 
                 with self.captureOnCommitCallbacks(execute=True):
                     category.page_h1 = "Кейсы категории"
@@ -1513,7 +1841,7 @@ class ProjectStaticGenerationSignalTests(TestCase):
                     )
 
                 updated_html = category_target.read_text(encoding="utf-8")
-                self.assertIn("<title>Категория SEO | Cultnova</title>", updated_html)
+                self.assertIn("<title>Категория SEO | CultNova</title>", updated_html)
                 self.assertIn('content="SEO описание категории."', updated_html)
                 self.assertIn('content="seo, category"', updated_html)
                 self.assertIn('content="noindex,nofollow"', updated_html)
@@ -1538,7 +1866,7 @@ class ProjectStaticGenerationSignalTests(TestCase):
                 category_target = Path(temp_dir) / "projects" / "category" / category.slug / "index.html"
                 html = category_target.read_text(encoding="utf-8")
 
-                self.assertIn(f"<title>Категория {current_year} | Cultnova</title>", html)
+                self.assertIn(f"<title>Категория {current_year} | CultNova</title>", html)
                 self.assertIn(f'content="SEO описание {current_year}."', html)
                 self.assertIn(f'content="seo, {current_year}"', html)
                 self.assertIn(f">Кейсы {current_year}</h1>", html)
@@ -1585,8 +1913,7 @@ class ProjectStaticGenerationSignalTests(TestCase):
                 self.assertIn("Moved Project", old_category_page.read_text(encoding="utf-8"))
 
                 with self.captureOnCommitCallbacks(execute=True):
-                    project.category = new_category
-                    project.save(update_fields=["category"])
+                    project.categories.set([new_category])
 
                 self.assertNotIn("Moved Project", old_category_page.read_text(encoding="utf-8"))
                 self.assertIn("Moved Project", new_category_page.read_text(encoding="utf-8"))

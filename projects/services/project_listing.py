@@ -9,7 +9,7 @@ from urllib.parse import urlsplit
 
 from django.conf import settings
 from django.core.paginator import Paginator
-from django.db.models import Case, IntegerField, Prefetch, QuerySet, Value, When
+from django.db.models import Case, IntegerField, Prefetch, QuerySet, Value, When, prefetch_related_objects
 from django.template.loader import render_to_string
 from django.utils.safestring import mark_safe
 
@@ -19,6 +19,10 @@ from core.services.build_item_html import (
 )
 
 from ..models import ProjectCategories, Projects, ProjectsContentBlock, ServicePageProjects
+from .project_categories import (
+    build_project_categories_payload,
+    get_ordered_project_categories_prefetch,
+)
 from .project_category_seo import get_resolved_project_category_seo_fields
 from .project_rendering import build_public_project_path
 
@@ -65,10 +69,12 @@ def _normalize_text(value: str) -> str:
 def _build_browser_title(title: str) -> str:
     normalized_title = _normalize_text(title)
     if not normalized_title:
-        return "Cultnova"
+        return "CultNova"
+    if normalized_title.lower().endswith("| cultnova"):
+        return f"{normalized_title[:-len('cultnova')]}CultNova"
     if "cultnova" in normalized_title.lower():
         return normalized_title
-    return f"{normalized_title} | Cultnova"
+    return f"{normalized_title} | CultNova"
 
 
 def _build_public_url(path: str) -> str:
@@ -132,13 +138,13 @@ def get_published_projects_queryset(
     include_images: bool = False,
 ) -> QuerySet[Projects]:
     queryset = apply_projects_listing_ordering(
-        Projects.objects.select_related("category")
+        Projects.objects.prefetch_related(get_ordered_project_categories_prefetch())
         .filter(is_published=True)
         .exclude(seo_robots__icontains="noindex")
     )
 
     if category_slug:
-        queryset = queryset.filter(category__slug=category_slug)
+        queryset = queryset.filter(categories__slug=category_slug).distinct()
 
     if include_images:
         queryset = queryset.prefetch_related(
@@ -193,6 +199,8 @@ def build_project_card_payload(
     *,
     include_images: bool = False,
 ) -> dict[str, object]:
+    categories = build_project_categories_payload(project)
+    primary_category = categories[0] if categories else None
     payload: dict[str, object] = {
         "id": project.id,
         "title": project.title,
@@ -200,7 +208,10 @@ def build_project_card_payload(
         "customer_name": project.customer_name,
         "year": project.year,
         "type": project.type,
-        "category_title": _normalize_text(getattr(project.category, "title", "")),
+        "categories": categories,
+        "category_title": _normalize_text(primary_category["title"]) if primary_category else "",
+        "category": primary_category,
+        "categories_text": " · ".join(_normalize_text(category["title"]) for category in categories),
         "preview": project.preview_image or None,
         "preview_image_alt": _normalize_text(project.preview_image_alt),
         "excerpt": _normalize_text(project.excerpt) or _normalize_text(project.seo_description),
@@ -264,12 +275,26 @@ def _attach_project_image_blocks(projects: list[Projects]) -> None:
         project.image_blocks = image_blocks_by_project_id.get(project.pk, [])
 
 
+def _attach_project_categories(projects: list[Projects]) -> None:
+    projects_without_prefetch = [
+        project
+        for project in projects
+        if getattr(project, "ordered_categories", None) is None
+    ]
+    if projects_without_prefetch:
+        prefetch_related_objects(
+            projects_without_prefetch,
+            get_ordered_project_categories_prefetch(),
+        )
+
+
 def build_service_page_projects_payload(service_page: ServicePageProjects) -> dict[str, object]:
     selected_projects = [
         project
         for project in (getattr(service_page, field_name) for field_name in ServicePageProjects.PROJECT_FIELDS)
         if _is_visible_project(project)
     ]
+    _attach_project_categories(selected_projects)
     _attach_project_image_blocks(selected_projects)
 
     return {
@@ -475,7 +500,7 @@ def build_projects_listing_context(
     active_category: ProjectCategories | None = None,
     page_size: int = PROJECTS_LISTING_PAGE_SIZE,
 ) -> dict[str, object]:
-    categories = list(ProjectCategories.objects.order_by("-created_at", "title"))
+    categories = list(ProjectCategories.objects.ordered())
     projects_page = Paginator(
         get_published_projects_queryset(
             category_slug=active_category.slug if active_category else None,
@@ -486,7 +511,7 @@ def build_projects_listing_context(
     projects = [build_project_card_payload(project) for project in projects_page.object_list]
 
     if active_category is None:
-        page_title = "Реализованные проекты компании «Cultnova»"
+        page_title = "Реализованные проекты компании «CultNova»"
         page_description = (
             "Портфолио реализованных проектов: комплексное проектирование музеев, "
             "оформление выставок и интеграция передовых мультимедийных решений в культурных объектах🏛."
@@ -672,7 +697,7 @@ def rebuild_projects_listing_static_html(
     written_paths = [build_projects_listing_static_html(sync_partials=False)]
 
     if category_slugs is None:
-        categories = list(ProjectCategories.objects.order_by("-created_at", "title"))
+        categories = list(ProjectCategories.objects.ordered())
         for category in categories:
             written_paths.append(
                 build_projects_listing_static_html(

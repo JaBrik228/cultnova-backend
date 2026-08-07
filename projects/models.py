@@ -1,6 +1,48 @@
 ﻿from django.db import models
 
+from django.db.models import Count, F, Q
+from django.db.models.deletion import ProtectedError
+
 from core.models.base_item import BaseContentBlock, BaseContentItem
+
+
+class ProjectCategoriesQuerySet(models.QuerySet):
+    def ordered(self):
+        return self.order_by(F("sort_order").asc(nulls_last=True), "title", "pk")
+
+    def _projects_orphaned_by_delete(self):
+        category_ids = list(self.values_list("pk", flat=True))
+        if not category_ids:
+            return Projects.objects.none()
+
+        return (
+            Projects.objects.annotate(
+                _categories_being_deleted=Count(
+                    "categories",
+                    filter=Q(categories__pk__in=category_ids),
+                    distinct=True,
+                ),
+                _remaining_categories=Count(
+                    "categories",
+                    filter=~Q(categories__pk__in=category_ids),
+                    distinct=True,
+                ),
+            )
+            .filter(_categories_being_deleted__gt=0, _remaining_categories=0)
+            .order_by("pk")
+        )
+
+    def _guard_delete(self):
+        orphaned_projects = list(self._projects_orphaned_by_delete())
+        if orphaned_projects:
+            raise ProtectedError(
+                "Нельзя удалить категории: хотя бы один проект останется без категории.",
+                orphaned_projects,
+            )
+
+    def delete(self):
+        self._guard_delete()
+        return super().delete()
 
 
 class ProjectCategories(models.Model):
@@ -12,25 +54,50 @@ class ProjectCategories(models.Model):
     seo_keywords = models.CharField(max_length=500, blank=True, default="", verbose_name="SEO keywords")
     seo_robots = models.CharField(max_length=32, blank=True, default="index,follow", verbose_name="SEO robots")
     canonical_url = models.URLField(max_length=1024, blank=True, default="", verbose_name="Canonical URL")
+    sort_order = models.PositiveIntegerField(
+        null=True,
+        blank=True,
+        db_index=True,
+        verbose_name="Порядок",
+    )
     created_at = models.DateTimeField(auto_now_add=True, verbose_name="Дата создания")
+
+    objects = ProjectCategoriesQuerySet.as_manager()
 
     class Meta:
         verbose_name = "Категория проектов"
         verbose_name_plural = "Категории проектов"
-        ordering = ("-created_at",)
+        ordering = (F("sort_order").asc(nulls_last=True), "title", "pk")
 
     def __str__(self):
         return self.title
+
+    def delete(self, using=None, keep_parents=False):
+        type(self).objects.filter(pk=self.pk)._guard_delete()
+        return super().delete(using=using, keep_parents=keep_parents)
+
+
+class ProjectsQuerySet(models.QuerySet):
+    def create(self, **kwargs):
+        legacy_category = kwargs.pop("category", None)
+        legacy_category_id = kwargs.pop("category_id", None)
+        project = super().create(**kwargs)
+
+        if legacy_category is not None:
+            project.categories.add(legacy_category)
+        elif legacy_category_id is not None:
+            project.categories.add(legacy_category_id)
+
+        return project
 
 
 class Projects(BaseContentItem):
     title = models.CharField(max_length=100, verbose_name="Название")
     slug = models.SlugField(unique=True, verbose_name="Слаг")
-    category = models.ForeignKey(
+    categories = models.ManyToManyField(
         ProjectCategories,
         related_name="projects",
-        on_delete=models.CASCADE,
-        verbose_name="Категория",
+        verbose_name="Категории",
     )
     customer_name = models.CharField(max_length=300, verbose_name="Заказчик")
     year = models.PositiveIntegerField(verbose_name="Год")
@@ -54,6 +121,8 @@ class Projects(BaseContentItem):
     seo_robots = models.CharField(max_length=32, default="index,follow", verbose_name="SEO robots")
     canonical_url = models.URLField(max_length=1024, blank=True, default="", verbose_name="Canonical URL")
 
+    objects = ProjectsQuerySet.as_manager()
+
     class Meta:
         verbose_name = "Проект"
         verbose_name_plural = "Проекты"
@@ -61,6 +130,12 @@ class Projects(BaseContentItem):
 
     def __str__(self):
         return self.title
+
+    def get_ordered_categories(self):
+        prefetched_categories = getattr(self, "ordered_categories", None)
+        if prefetched_categories is not None:
+            return prefetched_categories
+        return list(self.categories.all())
 
 
 class ServicePageProjects(models.Model):

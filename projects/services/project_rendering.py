@@ -5,6 +5,10 @@ from django.utils.safestring import mark_safe
 
 from blog.services.article_rendering import build_share_links
 from blog.services.rich_text import sanitize_rich_body_html
+from projects.services.project_categories import (
+    build_project_categories_payload,
+    get_ordered_project_categories_prefetch,
+)
 
 
 def build_public_project_path(slug: str) -> str:
@@ -71,22 +75,33 @@ def _split_feature_media(media_list):
 
 
 def _build_related_projects(project, limit=6):
+    category_ids = [category.pk for category in project.get_ordered_categories()]
+    if not category_ids:
+        return []
+
     same_category = (
-        project.__class__.objects.filter(is_published=True, category_id=project.category_id)
+        project.__class__.objects.filter(is_published=True, categories__pk__in=category_ids)
         .exclude(pk=project.pk)
+        .prefetch_related(get_ordered_project_categories_prefetch())
         .order_by("-created_at")
+        .distinct()
     )
 
     payload = []
     for item in same_category[:limit]:
         title = _normalize_text(item.title)
         excerpt = _normalize_text(item.excerpt) or _normalize_text(item.seo_description) or title
+        categories = build_project_categories_payload(item)
+        primary_category = categories[0] if categories else None
         payload.append(
             {
                 "slug": item.slug,
                 "title": title,
                 "url": build_public_project_path(item.slug),
-                "category_title": _normalize_text(getattr(item.category, "title", "")),
+                "categories": categories,
+                "category_title": _normalize_text(primary_category["title"]) if primary_category else "",
+                "category": primary_category,
+                "categories_text": " · ".join(category["title"] for category in categories),
                 "preview_image": item.preview_image or "",
                 "preview_image_alt": _normalize_text(item.preview_image_alt) or title,
                 "excerpt": excerpt,
@@ -97,6 +112,10 @@ def _build_related_projects(project, limit=6):
 
 
 def build_project_render_context(project):
+    if getattr(project, "ordered_categories", None) is None:
+        project.ordered_categories = project.get_ordered_categories()
+
+    categories = build_project_categories_payload(project)
     sanitized_body_html = sanitize_rich_body_html(getattr(project, "body_html", ""))
     media_list, has_video = _build_project_media(project)
     feature_media, gallery_media = _split_feature_media(media_list)
@@ -126,6 +145,10 @@ def build_project_render_context(project):
     project.url = project_url
     project.path = project_path
     project.share_links = build_share_links(project_url, seo_title)
+    project.categories_payload = categories
+    project.category = categories[0] if categories else None
+    project.category_title = project.category["title"] if project.category else ""
+    project.categories_text = " · ".join(category["title"] for category in categories)
 
     project.seo = {
         "title": seo_title,

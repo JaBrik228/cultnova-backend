@@ -265,10 +265,22 @@
         var content = document.createElement("div");
         content.className = "projects__card-content";
 
-        if (typeof project?.category_title === "string" && project.category_title.trim()) {
+        var categoryText = Array.isArray(project?.categories)
+            ? project.categories
+                  .map(function (categoryItem) {
+                      return typeof categoryItem?.title === "string" ? categoryItem.title.trim() : "";
+                  })
+                  .filter(Boolean)
+                  .join(" · ")
+            : "";
+        if (!categoryText && typeof project?.category_title === "string") {
+            categoryText = project.category_title.trim();
+        }
+
+        if (categoryText) {
             var category = document.createElement("span");
             category.className = "projects__card-category";
-            category.textContent = project.category_title.trim();
+            category.textContent = categoryText;
             content.append(category);
         }
 

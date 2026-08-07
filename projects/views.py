@@ -8,6 +8,7 @@ from projects.services.project_listing import (
     build_service_page_projects_payload,
     get_published_projects_queryset,
 )
+from projects.services.project_categories import get_ordered_project_categories_prefetch
 from projects.services.project_rendering import build_project_render_context
 
 from .models import ProjectCategories, Projects, ProjectsContentBlock, ServicePageProjects
@@ -22,7 +23,7 @@ def _sanitize_limit(raw_value, default=10, max_value=100):
 
 
 def get_all_categories(request):
-    categories = ProjectCategories.objects.all()
+    categories = ProjectCategories.objects.ordered()
 
     payload = []
     for category in categories:
@@ -31,6 +32,7 @@ def get_all_categories(request):
                 "id": category.id,
                 "title": category.title,
                 "slug": category.slug,
+                "sort_order": category.sort_order,
                 "created_at": category.created_at,
             }
         )
@@ -85,9 +87,13 @@ def get_projects_by_category(request, slug):
 def get_service_page_projects(request, slug):
     service_page = get_object_or_404(
         ServicePageProjects.objects.select_related(
-            "project_1__category",
-            "project_2__category",
-            "project_3__category",
+            "project_1",
+            "project_2",
+            "project_3",
+        ).prefetch_related(
+            get_ordered_project_categories_prefetch("project_1__categories"),
+            get_ordered_project_categories_prefetch("project_2__categories"),
+            get_ordered_project_categories_prefetch("project_3__categories"),
         ),
         slug=slug,
     )
@@ -121,7 +127,11 @@ def get_projects_details(request, slug):
 
 
 def get_project_detail_full(request, slug):
-    project = get_object_or_404(Projects, slug=slug, is_published=True)
+    project = get_object_or_404(
+        Projects.objects.prefetch_related(get_ordered_project_categories_prefetch()),
+        slug=slug,
+        is_published=True,
+    )
 
     context = build_project_render_context(project)
     rendered_project = context["project"]
@@ -130,11 +140,9 @@ def get_project_detail_full(request, slug):
         "id": rendered_project.id,
         "slug": rendered_project.slug,
         "title": rendered_project.title,
-        "category": {
-            "id": rendered_project.category_id,
-            "title": rendered_project.category.title,
-            "slug": rendered_project.category.slug,
-        },
+        "categories": rendered_project.categories_payload,
+        "category_title": rendered_project.category_title,
+        "category": rendered_project.category,
         "customer_name": rendered_project.customer_name,
         "year": rendered_project.year,
         "type": rendered_project.type,
@@ -153,6 +161,10 @@ def get_project_detail_full(request, slug):
 
 
 def get_project_detail(request, slug):
-    project = get_object_or_404(Projects, slug=slug, is_published=True)
+    project = get_object_or_404(
+        Projects.objects.prefetch_related(get_ordered_project_categories_prefetch()),
+        slug=slug,
+        is_published=True,
+    )
     context = build_project_render_context(project)
     return render(request, "project_detail.html", context)

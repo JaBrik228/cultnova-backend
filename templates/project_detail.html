@@ -5,7 +5,7 @@
         <meta name="viewport" content="width=device-width, initial-scale=1.0" />
         <meta name="robots" content="{% firstof project.seo.robots 'index,follow' %}" />
 
-        <title>{% firstof project.seo.title project.title %} | Cultnova</title>
+        <title>{% firstof project.seo.title project.title %} | CultNova</title>
         <meta
             name="description"
             content="{% firstof project.seo.description 'Проект компании Cultnova.' %}"
@@ -215,6 +215,12 @@
                             {% endif %}
 
                             <div class="project__details" aria-label="Информация о проекте">
+                                {% if project.categories_text %}
+                                <div class="project__detail">
+                                    <span class="project__detail-label">Категории</span>
+                                    <span class="project__detail-value">{{ project.categories_text }}</span>
+                                </div>
+                                {% endif %}
                                 <div class="project__detail">
                                     <span class="project__detail-label">Заказчик</span>
                                     <span class="project__detail-value">{{ project.customer_name }}</span>
@@ -401,8 +407,8 @@
                                     />
                                 </div>
                                 {% endif %}
-                                {% if related.category_title %}
-                                <p class="articles-slider__card-category">{{ related.category_title }}</p>
+                                {% if related.categories_text %}
+                                <p class="articles-slider__card-category">{{ related.categories_text }}</p>
                                 {% endif %}
                                 <h3 class="articles-slider__card-title">{{ related.title }}</h3>
                                 {% if related.excerpt %}

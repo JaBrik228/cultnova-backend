@@ -83,6 +83,13 @@ Current code provides a minimal `article.seo` dict (title/description) and falls
   - sidebar media blocks (`image` / `video`) with `media_alt` and `caption`,
   - SEO fields (`seo_title`, `seo_description`, `seo_keywords`, `seo_robots`, `canonical_url`).
 
+## Projects categories API
+
+- `GET /api/projects/categories` keeps its URL and existing fields, adds nullable `sort_order`, and returns numbered categories first in ascending order, then unnumbered categories by `title` and `id`.
+- Project card, category, service-page, and full-detail payloads expose ordered `categories: [{id, title, slug, sort_order}]`.
+- Legacy `category_title` and `category` remain aliases of the first ordered category. Existing project/category URLs and pagination are unchanged.
+- A project must have at least one category in the admin application layer. Deleting categories is blocked when deleting the whole selected set would leave any project without categories.
+
 ## Production deploy (one-click)
 
 1. Create local deploy config from `.env.deploy.example`:
@@ -113,6 +120,7 @@ Deploy behavior:
 - If pending migrations are detected and `-RunMigrations` was not provided, deploy stops with a clear message and must be re-run with `-RunMigrations`.
 - For the current blog HTML-body / WYSIWYG release, use:
   `powershell -ExecutionPolicy Bypass -File tools/deploy_prod.ps1 -RunMigrations`
+- For the project multi-category release, back up the production database, rehearse migration `0014` on a copy, run the complete backend and frontend checks, then deploy with `-RunMigrations`. Finish with `python manage.py rebuild_projects_html --delete-unpublished` (the deploy script already performs this full rebuild).
 
 ## Full-stack deploy
 
