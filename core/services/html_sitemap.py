@@ -261,8 +261,10 @@ def _public_path_to_html_path(generated_root: Path, public_path: str) -> Path:
 
 def _normalize_title(title: str) -> str:
     normalized = title.strip()
-    if normalized.endswith("| Cultnova"):
-        normalized = normalized[: -len("| Cultnova")].strip()
+    for brand_suffix in ("| CultNova", "| Cultnova"):
+        if normalized.endswith(brand_suffix):
+            normalized = normalized[: -len(brand_suffix)].strip()
+            break
     return normalized
 
 

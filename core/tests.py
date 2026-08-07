@@ -277,29 +277,29 @@ class HtmlSitemapServiceTests(SimpleTestCase):
                 )
                 self._write_titled_page(
                     root / "index.html",
-                    "Любой title | Cultnova",
+                    "Любой title | CultNova",
                     robots="index,follow",
                 )
-                self._write_titled_page(root / "blog" / "index.html", "Блог | Cultnova", robots="index,follow")
+                self._write_titled_page(root / "blog" / "index.html", "Блог | CultNova", robots="index,follow")
                 self._write_titled_page(
                     root / "articles" / "live-article" / "index.html",
-                    "Статья Beta | Cultnova",
+                    "Статья Beta | CultNova",
                     robots="index,follow",
                 )
-                self._write_titled_page(root / "projects" / "index.html", "Проекты | Cultnova", robots="index,follow")
+                self._write_titled_page(root / "projects" / "index.html", "Проекты | CultNova", robots="index,follow")
                 self._write_titled_page(
                     root / "projects" / "live-project" / "index.html",
-                    "Проект Alpha | Cultnova",
+                    "Проект Alpha | CultNova",
                     robots="index,follow",
                 )
                 self._write_titled_page(
                     root / "create" / "museum-spaces" / "index.html",
-                    "Создание музеев | Cultnova",
+                    "Создание музеев | CultNova",
                     robots="index,follow",
                 )
-                self._write_titled_page(root / "museum" / "index.html", "Музеи и пространства | Cultnova", robots="index,follow")
-                self._write_titled_page(root / "info" / "about-company" / "index.html", "О компании | Cultnova", robots="index,follow")
-                self._write_titled_page(root / "about" / "index.html", "О компании старая | Cultnova", robots="index,follow")
+                self._write_titled_page(root / "museum" / "index.html", "Музеи и пространства | CultNova", robots="index,follow")
+                self._write_titled_page(root / "info" / "about-company" / "index.html", "О компании | CultNova", robots="index,follow")
+                self._write_titled_page(root / "about" / "index.html", "О компании старая | CultNova", robots="index,follow")
                 self._write_titled_page(
                     root / "legal" / "privacy-policy" / "index.html",
                     "Политика конфиденциальности",
@@ -307,12 +307,12 @@ class HtmlSitemapServiceTests(SimpleTestCase):
                 )
                 self._write_titled_page(
                     root / "privacy-policy" / "index.html",
-                    "Старая политика | Cultnova",
+                    "Старая политика | CultNova",
                     robots="index,follow",
                 )
                 self._write_titled_page(
                     root / "noindex-page" / "index.html",
-                    "Скрытая страница | Cultnova",
+                    "Скрытая страница | CultNova",
                     robots="noindex, nofollow",
                 )
 
@@ -349,19 +349,19 @@ class HtmlSitemapServiceTests(SimpleTestCase):
                 )
                 self._write_titled_page(
                     root / "index.html",
-                    "Домашняя | Cultnova",
+                    "Домашняя | CultNova",
                     robots="index,follow",
                     h1="Заголовок главной",
                 )
                 self._write_titled_page(
                     root / "articles" / "live-article" / "index.html",
-                    "Статья SEO | Cultnova",
+                    "Статья SEO | CultNova",
                     robots="index,follow",
                     h1="H1 статьи",
                 )
                 self._write_titled_page(
                     root / "about" / "index.html",
-                    "О компании | Cultnova",
+                    "О компании | CultNova",
                     robots="index,follow",
                 )
 
@@ -389,13 +389,13 @@ class HtmlSitemapServiceTests(SimpleTestCase):
                 )
                 self._write_titled_page(
                     root / "about" / "index.html",
-                    "About | Cultnova",
+                    "About | CultNova",
                     robots="index,follow",
                     h1="First line<br>Second line",
                 )
                 self._write_titled_page(
                     root / "info" / "contacts" / "index.html",
-                    "Contacts | Cultnova",
+                    "Contacts | CultNova",
                     robots="index,follow",
                     h1="Third line<br />Fourth line",
                 )
@@ -437,10 +437,10 @@ class HtmlSitemapServiceTests(SimpleTestCase):
                         "https://example.com/articles/live-article/",
                     ],
                 )
-                self._write_titled_page(root / "index.html", "Главная | Cultnova", robots="index,follow")
+                self._write_titled_page(root / "index.html", "Главная | CultNova", robots="index,follow")
                 self._write_titled_page(
                     root / "articles" / "live-article" / "index.html",
-                    "Статья Beta | Cultnova",
+                    "Статья Beta | CultNova",
                     robots="index,follow",
                 )
 

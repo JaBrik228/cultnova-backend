@@ -1319,6 +1319,9 @@ try {
         try {
             $categoriesJson = $corsResponse.Content | ConvertFrom-Json
             foreach ($category in @($categoriesJson)) {
+                if ($category.PSObject.Properties.Name -notcontains "sort_order") {
+                    Fail "Projects categories API smoke-check failed: sort_order is missing."
+                }
                 $categorySlug = [string]$category.slug
                 if ([string]::IsNullOrWhiteSpace($categorySlug)) {
                     continue
@@ -1328,7 +1331,17 @@ try {
                 $projectsResponse = Ensure-Http200 -Url $projectsByCategoryUrl -Description "Smoke: API projects by category"
                 $projectsJson = $projectsResponse.Content | ConvertFrom-Json
                 if ($projectsJson -and $projectsJson.data -and $projectsJson.data.Count -gt 0) {
-                    $firstProjectSlug = [string]$projectsJson.data[0].slug
+                    $firstProject = $projectsJson.data[0]
+                    if ($null -eq $firstProject.categories -or @($firstProject.categories).Count -lt 1) {
+                        Fail "Projects API smoke-check failed: categories array is missing or empty."
+                    }
+                    if ([string]$firstProject.category_title -ne [string]$firstProject.categories[0].title) {
+                        Fail "Projects API smoke-check failed: category_title is not the first categories item."
+                    }
+                    if ([string]$firstProject.category.id -ne [string]$firstProject.categories[0].id) {
+                        Fail "Projects API smoke-check failed: category is not the first categories item."
+                    }
+                    $firstProjectSlug = [string]$firstProject.slug
                     break
                 }
             }
@@ -1360,6 +1373,12 @@ try {
             $projectRobots = ""
             try {
                 $projectDetailJson = $projectDetailResponse.Content | ConvertFrom-Json
+                if ($null -eq $projectDetailJson.categories -or @($projectDetailJson.categories).Count -lt 1) {
+                    Fail "Project detail API smoke-check failed: categories array is missing or empty."
+                }
+                if ([string]$projectDetailJson.category_title -ne [string]$projectDetailJson.categories[0].title) {
+                    Fail "Project detail API smoke-check failed: legacy category_title mismatch."
+                }
                 if ($null -ne $projectDetailJson.seo -and $null -ne $projectDetailJson.seo.robots) {
                     $projectRobots = [string]$projectDetailJson.seo.robots
                 }
