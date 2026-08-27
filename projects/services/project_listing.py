@@ -26,7 +26,7 @@ from .project_categories import (
 from .project_category_seo import get_resolved_project_category_seo_fields
 from .project_rendering import build_public_project_path
 
-PROJECTS_LISTING_PAGE_SIZE = 3
+PROJECTS_LISTING_PAGE_SIZE = 6
 DEFAULT_PUBLIC_CMS_BASE_URL = "https://cms.cultnova.ru"
 PROJECTS_HERO_ALT = "Проекты Cultnova"
 PROJECTS_HERO_PRELOADS = (

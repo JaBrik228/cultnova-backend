@@ -520,6 +520,18 @@ class ProjectsListingViewTests(TestCase):
         self.assertContains(response, "Education · Museums")
 
     def test_projects_root_page_renders_first_batch_and_load_more_state(self):
+        for index in range(3):
+            Projects.objects.create(
+                title=f"Additional Project {index}",
+                slug=f"additional-project-{index}",
+                category=self.museums,
+                customer_name="Client",
+                year=2025,
+                type="Type",
+                body_html="<p>Body</p>",
+                is_published=True,
+            )
+
         response = self.client.get(reverse("projects:projects_list"))
 
         self.assertEqual(response.status_code, 200)
@@ -545,6 +557,27 @@ class ProjectsListingViewTests(TestCase):
         self.assertNotContains(response, "Museum Alpha")
         self.assertContains(response, 'aria-current="page"')
         self.assertContains(response, "Показать еще")
+
+    def test_projects_root_page_renders_six_projects_in_initial_batch(self):
+        for index in range(3):
+            Projects.objects.create(
+                title=f"Additional Project {index}",
+                slug=f"additional-project-{index}",
+                category=self.museums,
+                customer_name="Client",
+                year=2025,
+                type="Type",
+                body_html="<p>Body</p>",
+                is_published=True,
+            )
+
+        response = self.client.get(reverse("projects:projects_list"))
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(len(response.context["projects"]), 6)
+        self.assertContains(response, 'data-projects-page-size="6"')
+        self.assertContains(response, 'data-projects-next-page="2"')
+        self.assertContains(response, 'data-projects-has-next="1"')
 
     def test_projects_category_page_activates_selected_filter_and_excludes_other_categories(self):
         response = self.client.get(reverse("projects:projects_category_list", kwargs={"slug": self.museums.slug}))

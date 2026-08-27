@@ -96,7 +96,7 @@
     function ProjectsListingController(shellElement) {
         this.shellElement = shellElement;
         this.endpoint = shellElement?.dataset.projectsEndpoint || "";
-        this.pageSize = parseInteger(shellElement?.dataset.projectsPageSize, 3);
+        this.pageSize = parseInteger(shellElement?.dataset.projectsPageSize, 6);
         this.feedElement = shellElement?.querySelector("#projectsFeed") || null;
         this.messageElement = shellElement?.querySelector("#projectsMessage") || null;
         this.statusElement = shellElement?.querySelector("#projectsStatus") || null;
