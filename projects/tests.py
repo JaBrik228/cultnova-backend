@@ -579,6 +579,22 @@ class ProjectsListingViewTests(TestCase):
         self.assertContains(response, 'data-projects-next-page="2"')
         self.assertContains(response, 'data-projects-has-next="1"')
 
+    def test_projects_listing_pages_hide_loader_when_javascript_is_disabled(self):
+        fallback_markup = (
+            "<noscript><style>.loader-wrap { display: none !important; }</style></noscript>"
+        )
+
+        for response in (
+            self.client.get(reverse("projects:projects_list")),
+            self.client.get(
+                reverse("projects:projects_category_list", kwargs={"slug": self.museums.slug})
+            ),
+        ):
+            self.assertEqual(response.status_code, 200)
+            self.assertContains(response, fallback_markup, html=True)
+            self.assertContains(response, 'id="projectsFeed"')
+            self.assertContains(response, "Museum Beta")
+
     def test_projects_category_page_activates_selected_filter_and_excludes_other_categories(self):
         response = self.client.get(reverse("projects:projects_category_list", kwargs={"slug": self.museums.slug}))
 
